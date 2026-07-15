@@ -1,0 +1,14 @@
+target/
+.stellar/
+.env
+.env.*
+!.env.example
+
+node_modules/
+dist/
+*.log
+
+# Deployed contract ids are written here by scripts/deploy.sh; they are
+# environment-specific and should not be committed.
+deployments/*.json
+!deployments/.gitkeep

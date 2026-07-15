@@ -1,0 +1,43 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+env:
+  CARGO_TERM_COLOR: always
+  RUSTFLAGS: -D warnings
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32v1-none
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Format
+        run: cargo fmt --all --check
+
+      - name: Clippy
+        run: cargo clippy --all-targets --all-features -- -D warnings
+
+      - name: Test
+        run: cargo test --all-features
+
+      # Contracts are billed by deployed size, so the wasm build is part of CI
+      # rather than something discovered at deploy time.
+      - name: Build wasm
+        run: cargo build --target wasm32v1-none --release
+
+      - name: Report contract sizes
+        run: |
+          echo "| contract | bytes |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| --- | ---: |" >> "$GITHUB_STEP_SUMMARY"
+          for f in target/wasm32v1-none/release/*.wasm; do
+            printf '| %s | %s |\n' "$(basename "$f" .wasm)" "$(stat -c%s "$f")" >> "$GITHUB_STEP_SUMMARY"
+          done
