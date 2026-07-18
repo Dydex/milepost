@@ -26,13 +26,15 @@ jobs:
       - name: Clippy
         run: cargo clippy --all-targets --all-features -- -D warnings
 
-      - name: Test
-        run: cargo test --all-features
-
-      # Contracts are billed by deployed size, so the wasm build is part of CI
-      # rather than something discovered at deploy time.
+      # Must precede the tests: the registry's tests instantiate the programme
+      # from its built wasm, the same way the registry does on-chain. Contracts
+      # are also billed by deployed size, so this belongs in CI rather than
+      # being discovered at deploy time.
       - name: Build wasm
         run: cargo build --target wasm32v1-none --release
+
+      - name: Test
+        run: cargo test --all-features
 
       - name: Report contract sizes
         run: |
