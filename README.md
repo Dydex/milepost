@@ -48,10 +48,10 @@ a *recipient*, and what that means is set per programme:
 | Crate | Role | Status |
 | --- | --- | --- |
 | `attest` | Schema-based attestation registry. Standalone; Soroban has no EAS equivalent. | Built |
-| `record` | Portable, non-transferable recipient history. | Phase 1 |
-| `registry` | Factory and protocol configuration. | Phase 2 |
-| `program` | A funding programme: contributions, applications, review, awards, tranches. | Phase 2 |
-| `treasury` | Multisig over protocol fees. | Phase 2 |
+| `record` | Portable, non-transferable recipient standing. | Built |
+| `registry` | Factory and protocol configuration. | Built |
+| `program` | A funding programme: contributions, applications, review, partial awards. | Built |
+| `treasury` | Multisig over protocol fees. | Phase 3 |
 | `policy_spend` | Policy signer restricting a smart wallet to verified payees. | Phase 4 |
 
 `attest`, `record` and `policy_spend` are deliberately free of any dependency on
@@ -91,8 +91,13 @@ stellar contract build      # optimised wasm
 
 ## Status
 
-Early. Phase 0 (workspace, CI, deploy) and the `attest` contract are done;
-everything else in the table above is in progress.
+Early, but the money path exists. Phases 0–2 are done: 77 tests, four contracts
+building to wasm, and an end-to-end route from contribution through application,
+review and partial award.
+
+Phase 3 is what makes it Milepost rather than another grants app — tranches that
+release only against a valid attestation, and the refund and recycle paths for
+money that is never claimed.
 
 ## Licence
 
