@@ -298,3 +298,62 @@ fn keepalive_is_permissionless_but_needs_a_real_id() {
         Err(Ok(Error::AttestationNotFound))
     );
 }
+
+#[test]
+fn verify_requires_subject_schema_and_attester_to_all_match() {
+    let f = setup();
+    let schema = open_schema(&f);
+    let uid = f
+        .client
+        .attest(&f.authority, &schema, &f.subject, &hash(&f.env, 1), &None);
+
+    assert!(f.client.verify(&uid, &f.subject, &schema, &f.authority));
+
+    let other = Address::generate(&f.env);
+    let other_schema = f.client.register_schema(
+        &f.authority,
+        &String::from_str(&f.env, "unrelated:v1"),
+        &true,
+        &false,
+    );
+
+    // Each of the three is independently sufficient to reject.
+    assert!(!f.client.verify(&uid, &other, &schema, &f.authority));
+    assert!(!f
+        .client
+        .verify(&uid, &f.subject, &other_schema, &f.authority));
+    assert!(!f.client.verify(&uid, &f.subject, &schema, &other));
+}
+
+#[test]
+fn verify_rejects_revoked_and_expired_claims() {
+    let f = setup();
+    let schema = open_schema(&f);
+    let expires_at = 5_000;
+    let live = f.client.attest(
+        &f.authority,
+        &schema,
+        &f.subject,
+        &hash(&f.env, 1),
+        &Some(expires_at),
+    );
+    let revoked = f
+        .client
+        .attest(&f.authority, &schema, &f.subject, &hash(&f.env, 2), &None);
+
+    f.client.revoke(&f.authority, &revoked);
+    assert!(!f.client.verify(&revoked, &f.subject, &schema, &f.authority));
+
+    assert!(f.client.verify(&live, &f.subject, &schema, &f.authority));
+    f.env.ledger().set_timestamp(expires_at + 1);
+    assert!(!f.client.verify(&live, &f.subject, &schema, &f.authority));
+}
+
+#[test]
+fn verify_rejects_an_unknown_id() {
+    let f = setup();
+    let schema = open_schema(&f);
+    assert!(!f
+        .client
+        .verify(&hash(&f.env, 9), &f.subject, &schema, &f.authority));
+}

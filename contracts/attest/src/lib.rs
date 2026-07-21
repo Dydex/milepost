@@ -273,8 +273,36 @@ impl Attest {
         Self::schema(&env, &uid)
     }
 
+    /// The check a contract gating value should actually use.
+    ///
+    /// [`Attest::is_valid`] deliberately says nothing about who made a claim or
+    /// what it was about, so using it alone accepts a perfectly valid
+    /// attestation by the wrong party, under the wrong schema, about someone
+    /// else entirely. Rather than trust every caller to remember all three
+    /// comparisons, this does them here, in one call.
+    pub fn verify(
+        env: Env,
+        uid: BytesN<32>,
+        subject: Address,
+        schema: BytesN<32>,
+        attester: Address,
+    ) -> bool {
+        match Self::attestation(&env, &uid) {
+            Ok(a) => {
+                let now = env.ledger().timestamp();
+                a.revoked_at.is_none()
+                    && a.expires_at.is_none_or(|at| at > now)
+                    && a.subject == subject
+                    && a.schema == schema
+                    && a.attester == attester
+            }
+            Err(_) => false,
+        }
+    }
+
     /// Whether the claim exists, has not been revoked, and has not expired.
-    /// Says nothing about *who* made it.
+    /// Says nothing about *who* made it or what it was about — prefer
+    /// [`Attest::verify`] when gating anything of value.
     pub fn is_valid(env: Env, uid: BytesN<32>) -> bool {
         match Self::attestation(&env, &uid) {
             Ok(a) => {
