@@ -55,6 +55,32 @@ pub enum Error {
     NotInitialized = 3,
 }
 
+/// Mirror of the programme's own `Config`.
+///
+/// The registry cannot depend on the programme crate — linking it would export
+/// its contract symbols from this wasm too — so the shape is duplicated here.
+/// The field order and types must match exactly, and the registry's tests read
+/// the deployed programme's config back through its wasm client, so a drift
+/// between the two fails the build rather than producing a subtly broken
+/// programme.
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ProgrammeConfig {
+    pub creator: Address,
+    pub token: Address,
+    pub treasury: Address,
+    pub attest: Address,
+    pub record: Address,
+    pub schema: BytesN<32>,
+    pub fee_bps: u32,
+    pub apply_deadline: u64,
+    pub review_deadline: u64,
+    pub release_deadline: u64,
+    pub quorum: u32,
+    pub tranches: u32,
+    pub metadata_hash: BytesN<32>,
+}
+
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Config {
@@ -134,12 +160,15 @@ impl Registry {
         env: Env,
         creator: Address,
         token: Address,
+        schema: BytesN<32>,
         apply_deadline: u64,
         review_deadline: u64,
+        release_deadline: u64,
         quorum: u32,
         tranches: u32,
         metadata_hash: BytesN<32>,
         reviewers: Vec<Address>,
+        verifiers: Vec<Address>,
         name: String,
     ) -> Result<Address, Error> {
         creator.require_auth();
@@ -157,16 +186,23 @@ impl Registry {
             .deploy_v2(
                 config.program_wasm.clone(),
                 (
-                    creator.clone(),
-                    token,
-                    config.treasury.clone(),
-                    config.fee_bps,
-                    apply_deadline,
-                    review_deadline,
-                    quorum,
-                    tranches,
-                    metadata_hash,
+                    ProgrammeConfig {
+                        creator: creator.clone(),
+                        token,
+                        treasury: config.treasury.clone(),
+                        attest: config.attest.clone(),
+                        record: config.record.clone(),
+                        schema,
+                        fee_bps: config.fee_bps,
+                        apply_deadline,
+                        review_deadline,
+                        release_deadline,
+                        quorum,
+                        tranches,
+                        metadata_hash,
+                    },
                     reviewers,
+                    verifiers,
                 ),
             );
 

@@ -13,6 +13,7 @@ mod programme {
 const FEE_BPS: u32 = 1_000;
 const APPLY_DEADLINE: u64 = 10_000;
 const REVIEW_DEADLINE: u64 = 20_000;
+const RELEASE_DEADLINE: u64 = 30_000;
 
 struct Fixture {
     env: Env,
@@ -68,8 +69,10 @@ fn create(f: &Fixture, creator: &Address) -> Address {
     f.client.create(
         creator,
         &f.token,
+        &BytesN::from_array(&f.env, &[3u8; 32]),
         &APPLY_DEADLINE,
         &REVIEW_DEADLINE,
+        &RELEASE_DEADLINE,
         &2u32,
         &3u32,
         &BytesN::from_array(&f.env, &[7u8; 32]),
@@ -79,6 +82,7 @@ fn create(f: &Fixture, creator: &Address) -> Address {
             Address::generate(&f.env),
             Address::generate(&f.env),
         ],
+        &vec![&f.env, Address::generate(&f.env)],
         &String::from_str(&f.env, "Health worker stipend 2026"),
     )
 }
