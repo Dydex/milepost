@@ -4,11 +4,12 @@ use super::*;
 use soroban_sdk::{
     testutils::{Address as _, Ledger as _},
     token::{StellarAssetClient, TokenClient},
-    vec, Env,
+    vec, Env, String,
 };
 
 const APPLY_DEADLINE: u64 = 10_000;
 const REVIEW_DEADLINE: u64 = 20_000;
+const RELEASE_DEADLINE: u64 = 30_000;
 const FEE_BPS: u32 = 1_000; // 10%
 
 struct Fixture {
@@ -16,12 +17,20 @@ struct Fixture {
     client: ProgrammeClient<'static>,
     token: TokenClient<'static>,
     mint: StellarAssetClient<'static>,
+    attest: milepost_attest::AttestClient<'static>,
+    record: milepost_record::RecordClient<'static>,
+    schema: BytesN<32>,
     creator: Address,
     treasury: Address,
     reviewers: Vec<Address>,
+    verifier: Address,
 }
 
 fn setup(quorum: u32, reviewer_count: u32) -> Fixture {
+    setup_with(quorum, reviewer_count, 3)
+}
+
+fn setup_with(quorum: u32, reviewer_count: u32, tranches: u32) -> Fixture {
     let env = Env::default();
     env.mock_all_auths();
 
@@ -32,6 +41,22 @@ fn setup(quorum: u32, reviewer_count: u32) -> Fixture {
 
     let creator = Address::generate(&env);
     let treasury = Address::generate(&env);
+    let verifier = Address::generate(&env);
+
+    let attest_id = env.register(milepost_attest::Attest, ());
+    let attest = milepost_attest::AttestClient::new(&env, &attest_id);
+    // Restricted so only this verifier can make the claim at all — belt and
+    // braces alongside the programme's own trusted-verifier check.
+    let schema = attest.register_schema(
+        &verifier,
+        &String::from_str(&env, "milestone-met:v1"),
+        &true,
+        &true,
+    );
+
+    let record_id = env.register(milepost_record::Record, (creator.clone(),));
+    let record = milepost_record::RecordClient::new(&env, &record_id);
+
     let mut reviewers = Vec::new(&env);
     for _ in 0..reviewer_count {
         reviewers.push_back(Address::generate(&env));
@@ -40,18 +65,27 @@ fn setup(quorum: u32, reviewer_count: u32) -> Fixture {
     let id = env.register(
         Programme,
         (
-            creator.clone(),
-            asset.address(),
-            treasury.clone(),
-            FEE_BPS,
-            APPLY_DEADLINE,
-            REVIEW_DEADLINE,
-            quorum,
-            3u32,
-            BytesN::from_array(&env, &[7u8; 32]),
+            Config {
+                creator: creator.clone(),
+                token: asset.address(),
+                treasury: treasury.clone(),
+                attest: attest_id,
+                record: record_id,
+                schema: schema.clone(),
+                fee_bps: FEE_BPS,
+                apply_deadline: APPLY_DEADLINE,
+                review_deadline: REVIEW_DEADLINE,
+                release_deadline: RELEASE_DEADLINE,
+                quorum,
+                tranches,
+                metadata_hash: BytesN::from_array(&env, &[7u8; 32]),
+            },
             reviewers.clone(),
+            vec![&env, verifier.clone()],
         ),
     );
+    // The programme credits standing, so it has to be an authorised writer.
+    record.add_writer(&id);
 
     let client = ProgrammeClient::new(&env, &id);
     Fixture {
@@ -59,9 +93,13 @@ fn setup(quorum: u32, reviewer_count: u32) -> Fixture {
         client,
         token,
         mint,
+        attest,
+        record,
+        schema,
         creator,
         treasury,
         reviewers,
+        verifier,
     }
 }
 
@@ -77,6 +115,13 @@ fn hash(env: &Env, byte: u8) -> BytesN<32> {
 
 fn to_review(f: &Fixture) {
     f.env.ledger().set_timestamp(APPLY_DEADLINE + 1);
+}
+
+/// An attestation from the programme's trusted verifier that `recipient` met a
+/// milestone. `n` just keeps repeat proofs distinct.
+fn proof(f: &Fixture, recipient: &Address, n: u8) -> BytesN<32> {
+    f.attest
+        .attest(&f.verifier, &f.schema, recipient, &hash(&f.env, n), &None)
 }
 
 // ---- construction ----
@@ -130,20 +175,28 @@ fn construct_with(quorum: u32, reviewer_count: u32, apply: u64, review: u64, fee
     for _ in 0..reviewer_count {
         reviewers.push_back(Address::generate(&env));
     }
+    let verifier = Address::generate(&env);
 
     env.register(
         Programme,
         (
-            Address::generate(&env),
-            asset.address(),
-            Address::generate(&env),
-            fee_bps,
-            apply,
-            review,
-            quorum,
-            3u32,
-            BytesN::from_array(&env, &[7u8; 32]),
+            Config {
+                creator: Address::generate(&env),
+                token: asset.address(),
+                treasury: Address::generate(&env),
+                attest: Address::generate(&env),
+                record: Address::generate(&env),
+                schema: BytesN::from_array(&env, &[1u8; 32]),
+                fee_bps,
+                apply_deadline: apply,
+                review_deadline: review,
+                release_deadline: RELEASE_DEADLINE,
+                quorum,
+                tranches: 3,
+                metadata_hash: BytesN::from_array(&env, &[7u8; 32]),
+            },
             reviewers,
+            vec![&env, verifier],
         ),
     );
 }
@@ -567,4 +620,345 @@ fn cancelling_twice_is_rejected() {
     let f = setup(2, 3);
     f.client.cancel();
     assert_eq!(f.client.try_cancel(), Err(Ok(Error::Cancelled)));
+}
+
+// ---- release ----
+
+/// Drive a programme to the point where `recipient` holds an award paid to
+/// `payee`, then advance into the release window.
+fn award_to(f: &Fixture, recipient: &Address, payee: &Address, granted: &i128) {
+    let donor = funded_donor(f, 100_000);
+    f.client.contribute(&donor, &100_000);
+    f.client.apply(recipient, granted, &hash(&f.env, 1));
+    to_review(f);
+    for i in 0..f.client.get_config().quorum {
+        f.client
+            .review(&f.reviewers.get(i).unwrap(), recipient, granted);
+    }
+    f.client.finalize(recipient, payee, &Mode::Direct);
+}
+
+#[test]
+fn a_tranche_releases_to_the_payee_against_a_valid_proof() {
+    let f = setup(2, 3);
+    let recipient = Address::generate(&f.env);
+    let school = Address::generate(&f.env);
+    award_to(&f, &recipient, &school, &900);
+
+    let amount = f
+        .client
+        .release(&recipient, &proof(&f, &recipient, 1), &f.verifier);
+
+    assert_eq!(amount, 300, "900 over 3 tranches");
+    assert_eq!(f.token.balance(&school), 300);
+    assert_eq!(
+        f.token.balance(&recipient),
+        0,
+        "Direct mode never puts funds in the recipient's hands"
+    );
+    assert_eq!(f.client.total_released(), 300);
+
+    let award = f.client.get_award(&recipient);
+    assert_eq!(award.tranches_released, 1);
+    assert_eq!(award.released, 300);
+}
+
+#[test]
+fn releasing_credits_standing() {
+    let f = setup(2, 3);
+    let recipient = Address::generate(&f.env);
+    let school = Address::generate(&f.env);
+    award_to(&f, &recipient, &school, &900);
+
+    f.client
+        .release(&recipient, &proof(&f, &recipient, 1), &f.verifier);
+
+    let standing = f.record.get(&recipient);
+    assert_eq!(standing.total_received, 300);
+    assert_eq!(standing.tranches, 1);
+    assert_eq!(standing.programmes, 1);
+}
+
+#[test]
+fn one_proof_unlocks_exactly_one_tranche() {
+    let f = setup(2, 3);
+    let recipient = Address::generate(&f.env);
+    let school = Address::generate(&f.env);
+    award_to(&f, &recipient, &school, &900);
+
+    let uid = proof(&f, &recipient, 1);
+    f.client.release(&recipient, &uid, &f.verifier);
+    assert!(f.client.is_spent(&uid));
+
+    assert_eq!(
+        f.client.try_release(&recipient, &uid, &f.verifier),
+        Err(Ok(Error::AttestationAlreadyUsed))
+    );
+    assert_eq!(f.token.balance(&school), 300);
+}
+
+#[test]
+fn the_final_tranche_takes_the_remainder() {
+    // 1000 over 3 is 333, 333, 334 — integer division must not strand dust.
+    let f = setup(2, 3);
+    let recipient = Address::generate(&f.env);
+    let school = Address::generate(&f.env);
+    award_to(&f, &recipient, &school, &1_000);
+
+    let a = f
+        .client
+        .release(&recipient, &proof(&f, &recipient, 1), &f.verifier);
+    let b = f
+        .client
+        .release(&recipient, &proof(&f, &recipient, 2), &f.verifier);
+    let c = f
+        .client
+        .release(&recipient, &proof(&f, &recipient, 3), &f.verifier);
+
+    assert_eq!((a, b, c), (333, 333, 334));
+    assert_eq!(a + b + c, 1_000);
+    assert_eq!(f.token.balance(&school), 1_000);
+}
+
+#[test]
+fn an_award_cannot_over_release() {
+    let f = setup_with(2, 3, 1);
+    let recipient = Address::generate(&f.env);
+    let school = Address::generate(&f.env);
+    award_to(&f, &recipient, &school, &900);
+
+    f.client
+        .release(&recipient, &proof(&f, &recipient, 1), &f.verifier);
+    assert_eq!(
+        f.client
+            .try_release(&recipient, &proof(&f, &recipient, 2), &f.verifier),
+        Err(Ok(Error::AwardFullyReleased))
+    );
+}
+
+#[test]
+fn an_untrusted_attester_cannot_release() {
+    let f = setup(2, 3);
+    let recipient = Address::generate(&f.env);
+    let school = Address::generate(&f.env);
+    award_to(&f, &recipient, &school, &900);
+
+    let impostor = Address::generate(&f.env);
+    assert_eq!(
+        f.client
+            .try_release(&recipient, &proof(&f, &recipient, 1), &impostor),
+        Err(Ok(Error::NotAuthorized))
+    );
+    assert_eq!(f.token.balance(&school), 0);
+}
+
+#[test]
+fn a_proof_about_someone_else_cannot_release() {
+    // The exact trap `is_valid` alone would fall into: a perfectly valid
+    // attestation, by the right verifier, about the wrong person.
+    let f = setup(2, 3);
+    let recipient = Address::generate(&f.env);
+    let school = Address::generate(&f.env);
+    award_to(&f, &recipient, &school, &900);
+
+    let someone_else = Address::generate(&f.env);
+    let wrong = proof(&f, &someone_else, 1);
+    assert_eq!(
+        f.client.try_release(&recipient, &wrong, &f.verifier),
+        Err(Ok(Error::AttestationInvalid))
+    );
+    assert_eq!(f.token.balance(&school), 0);
+}
+
+#[test]
+fn a_revoked_proof_cannot_release() {
+    let f = setup(2, 3);
+    let recipient = Address::generate(&f.env);
+    let school = Address::generate(&f.env);
+    award_to(&f, &recipient, &school, &900);
+
+    let uid = proof(&f, &recipient, 1);
+    f.attest.revoke(&f.verifier, &uid);
+
+    assert_eq!(
+        f.client.try_release(&recipient, &uid, &f.verifier),
+        Err(Ok(Error::AttestationInvalid))
+    );
+}
+
+#[test]
+fn releasing_without_an_award_is_rejected() {
+    let f = setup(2, 3);
+    let stranger = Address::generate(&f.env);
+    to_review(&f);
+    assert_eq!(
+        f.client
+            .try_release(&stranger, &proof(&f, &stranger, 1), &f.verifier),
+        Err(Ok(Error::AwardNotFound))
+    );
+}
+
+#[test]
+fn the_release_window_closes() {
+    let f = setup(2, 3);
+    let recipient = Address::generate(&f.env);
+    let school = Address::generate(&f.env);
+    award_to(&f, &recipient, &school, &900);
+
+    f.env.ledger().set_timestamp(RELEASE_DEADLINE);
+    assert_eq!(
+        f.client
+            .try_release(&recipient, &proof(&f, &recipient, 1), &f.verifier),
+        Err(Ok(Error::ReleaseWindowClosed))
+    );
+}
+
+// ---- protocol fee ----
+
+#[test]
+fn the_fee_sweeps_to_the_treasury_once() {
+    let f = setup(2, 3);
+    let donor = funded_donor(&f, 10_000);
+    f.client.contribute(&donor, &10_000);
+    to_review(&f);
+
+    assert_eq!(f.client.sweep_fee(), 1_000); // 10%
+    assert_eq!(f.token.balance(&f.treasury), 1_000);
+    assert_eq!(f.client.try_sweep_fee(), Err(Ok(Error::FeeAlreadySwept)));
+    assert_eq!(f.token.balance(&f.treasury), 1_000);
+}
+
+#[test]
+fn the_fee_cannot_be_swept_while_contributions_are_open() {
+    // The amount would still be moving.
+    let f = setup(2, 3);
+    let donor = funded_donor(&f, 10_000);
+    f.client.contribute(&donor, &10_000);
+    assert_eq!(f.client.try_sweep_fee(), Err(Ok(Error::WrongPhase)));
+}
+
+#[test]
+fn sweeping_the_fee_leaves_the_awardable_budget_intact() {
+    let f = setup(2, 3);
+    let recipient = Address::generate(&f.env);
+    let school = Address::generate(&f.env);
+    award_to(&f, &recipient, &school, &900);
+
+    f.client.sweep_fee();
+    f.client
+        .release(&recipient, &proof(&f, &recipient, 1), &f.verifier);
+
+    assert_eq!(f.token.balance(&f.treasury), 10_000); // 10% of 100_000
+    assert_eq!(f.token.balance(&school), 300);
+}
+
+// ---- refunds ----
+
+#[test]
+fn unawarded_money_refunds_proportionally() {
+    let f = setup(2, 3);
+    let a = funded_donor(&f, 6_000);
+    let b = funded_donor(&f, 4_000);
+    f.client.contribute(&a, &6_000);
+    f.client.contribute(&b, &4_000);
+
+    // Nothing is ever awarded; budget is 9_000 after the 10% fee.
+    f.env.ledger().set_timestamp(RELEASE_DEADLINE);
+
+    assert_eq!(f.client.refund(&a), 5_400); // 60% of 9_000
+    assert_eq!(f.client.refund(&b), 3_600); // 40% of 9_000
+    assert_eq!(f.token.balance(&a), 5_400);
+    assert_eq!(f.token.balance(&b), 3_600);
+}
+
+#[test]
+fn tranches_never_released_go_back_to_donors() {
+    // A recipient who never produces a proof leaves their money in the pool
+    // rather than stranding it.
+    let f = setup(2, 3);
+    let recipient = Address::generate(&f.env);
+    let school = Address::generate(&f.env);
+    let donor = funded_donor(&f, 100_000);
+    f.client.contribute(&donor, &100_000);
+    f.client.apply(&recipient, &900, &hash(&f.env, 1));
+    to_review(&f);
+    for i in 0..2u32 {
+        f.client
+            .review(&f.reviewers.get(i).unwrap(), &recipient, &900);
+    }
+    f.client.finalize(&recipient, &school, &Mode::Direct);
+
+    // Only one of three tranches is ever claimed.
+    f.client
+        .release(&recipient, &proof(&f, &recipient, 1), &f.verifier);
+    f.env.ledger().set_timestamp(RELEASE_DEADLINE);
+
+    // Budget 90_000, released 300, so 89_700 comes back.
+    assert_eq!(f.client.refund(&donor), 89_700);
+}
+
+#[test]
+fn refunds_are_closed_until_the_release_window_ends() {
+    let f = setup(2, 3);
+    let donor = funded_donor(&f, 1_000);
+    f.client.contribute(&donor, &1_000);
+    to_review(&f);
+    assert_eq!(f.client.try_refund(&donor), Err(Ok(Error::RefundsNotOpen)));
+}
+
+#[test]
+fn a_donor_cannot_refund_twice() {
+    let f = setup(2, 3);
+    let donor = funded_donor(&f, 1_000);
+    f.client.contribute(&donor, &1_000);
+    f.env.ledger().set_timestamp(RELEASE_DEADLINE);
+
+    f.client.refund(&donor);
+    assert_eq!(f.client.try_refund(&donor), Err(Ok(Error::AlreadyRefunded)));
+    assert_eq!(f.token.balance(&donor), 900);
+}
+
+#[test]
+fn non_donors_have_nothing_to_refund() {
+    let f = setup(2, 3);
+    let donor = funded_donor(&f, 1_000);
+    f.client.contribute(&donor, &1_000);
+    f.env.ledger().set_timestamp(RELEASE_DEADLINE);
+
+    let stranger = Address::generate(&f.env);
+    assert_eq!(
+        f.client.try_refund(&stranger),
+        Err(Ok(Error::NothingToRefund))
+    );
+}
+
+#[test]
+fn cancelling_opens_refunds_immediately() {
+    let f = setup(2, 3);
+    f.client.cancel();
+    // Nothing was contributed, so there is nothing to claim — but the window is
+    // open rather than waiting on a deadline that no longer means anything.
+    let stranger = Address::generate(&f.env);
+    assert_eq!(
+        f.client.try_refund(&stranger),
+        Err(Ok(Error::NothingToRefund))
+    );
+}
+
+#[test]
+fn refunds_never_exceed_what_is_left() {
+    let f = setup(2, 3);
+    let a = funded_donor(&f, 3_333);
+    let b = funded_donor(&f, 3_333);
+    let c = funded_donor(&f, 3_334);
+    for (d, amt) in [(&a, 3_333i128), (&b, 3_333), (&c, 3_334)] {
+        f.client.contribute(d, &amt);
+    }
+    f.env.ledger().set_timestamp(RELEASE_DEADLINE);
+
+    let total: i128 = [&a, &b, &c].iter().map(|d| f.client.refund(d)).sum();
+    assert!(
+        total <= f.client.budget(),
+        "rounding must never let refunds exceed the pool"
+    );
 }

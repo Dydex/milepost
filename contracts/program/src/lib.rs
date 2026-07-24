@@ -41,9 +41,46 @@
 //! have.
 
 use soroban_sdk::{
-    contract, contracterror, contractevent, contractimpl, contracttype, token, Address, BytesN,
-    Env, Vec,
+    contract, contractclient, contracterror, contractevent, contractimpl, contracttype, token,
+    Address, BytesN, Env, Vec,
 };
+
+/// The slice of the attestation registry a programme needs.
+///
+/// `verify` rather than `is_valid`: the registry checks subject, schema and
+/// attester together, so a valid attestation by the wrong party under the wrong
+/// schema cannot unlock a tranche.
+///
+/// Declared rather than imported — linking the contract itself would export its
+/// symbols from this wasm too.
+#[contractclient(name = "AttestClient")]
+pub trait Attestations {
+    fn verify(
+        env: Env,
+        uid: BytesN<32>,
+        subject: Address,
+        schema: BytesN<32>,
+        attester: Address,
+    ) -> bool;
+}
+
+/// The slice of the standing contract a programme needs.
+///
+/// `credit` returns the updated standing, which this contract has no use for.
+/// It is declared as `Val` rather than `()` all the same: a client whose return
+/// type does not match what the callee actually returns fails conversion *after*
+/// the call has already moved money.
+#[contractclient(name = "StandingClient")]
+pub trait Standing {
+    fn credit(
+        env: Env,
+        writer: Address,
+        subject: Address,
+        programme: Address,
+        amount: i128,
+        attestation: BytesN<32>,
+    ) -> soroban_sdk::Val;
+}
 
 /// Ledgers per day, at the ~5 second close time Stellar targets.
 const DAY_IN_LEDGERS: u32 = 17_280;
@@ -84,6 +121,19 @@ pub enum Error {
     Cancelled = 16,
     /// A programme with money in it, or awards made, cannot be cancelled.
     NotCancellable = 17,
+    NoVerifiers = 18,
+    AwardNotFound = 19,
+    AwardFullyReleased = 20,
+    /// The attestation is missing, revoked, expired, or is not a claim by this
+    /// attester about this recipient under this programme's schema.
+    AttestationInvalid = 21,
+    /// One proof unlocks one tranche; this one is spent.
+    AttestationAlreadyUsed = 22,
+    ReleaseWindowClosed = 23,
+    FeeAlreadySwept = 24,
+    RefundsNotOpen = 25,
+    AlreadyRefunded = 26,
+    NothingToRefund = 27,
 }
 
 /// Where a tranche is paid. Restricted and Open modes arrive with the policy
@@ -111,6 +161,12 @@ pub enum Phase {
     Cancelled,
 }
 
+/// Everything a programme is constructed from.
+///
+/// Grouped into a struct rather than passed as a dozen positional arguments —
+/// at that width a caller transposing `review_deadline` and `release_deadline`,
+/// or `quorum` and `tranches`, produces a valid-looking programme that behaves
+/// wrongly, and the type system says nothing.
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Config {
@@ -118,11 +174,19 @@ pub struct Config {
     /// The asset being distributed, as a Stellar Asset Contract address.
     pub token: Address,
     pub treasury: Address,
+    /// Attestation registry that tranche conditions are verified against.
+    pub attest: Address,
+    /// Standing contract credited on each release.
+    pub record: Address,
+    /// The single schema whose attestations unlock this programme's tranches.
+    pub schema: BytesN<32>,
     pub fee_bps: u32,
     /// Applications close here.
     pub apply_deadline: u64,
     /// Reviews close here.
     pub review_deadline: u64,
+    /// Tranches stop releasing here, and whatever is left becomes refundable.
+    pub release_deadline: u64,
     /// Reviewer votes needed before an application can be finalised.
     pub quorum: u32,
     pub tranches: u32,
@@ -188,6 +252,32 @@ pub struct Awarded {
     pub award: Award,
 }
 
+#[contractevent(topics = ["released"])]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct Released {
+    #[topic]
+    pub recipient: Address,
+    #[topic]
+    pub payee: Address,
+    pub amount: i128,
+    pub attestation: BytesN<32>,
+    pub award: Award,
+}
+
+#[contractevent(topics = ["fee"], data_format = "single-value")]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct FeeSwept {
+    pub amount: i128,
+}
+
+#[contractevent(topics = ["refunded"], data_format = "single-value")]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct Refunded {
+    #[topic]
+    pub donor: Address,
+    pub amount: i128,
+}
+
 #[contractevent(topics = ["cancelled"], data_format = "single-value")]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ProgrammeCancelled {
@@ -201,13 +291,20 @@ enum Key {
     Cancelled,
     Contributed,
     Granted,
+    Released,
+    FeeSwept,
     /// One entry per contributor, so refunds stay proportional without a list.
     Donor(Address),
+    Refunded(Address),
     Reviewer(Address),
+    /// Attesters this programme trusts to unlock its tranches.
+    Verifier(Address),
     Application(Address),
     Award(Address),
     /// Marks that `reviewer` already voted on `applicant`.
     Voted(Address, Address),
+    /// Marks an attestation as spent, so one proof unlocks exactly one tranche.
+    Used(BytesN<32>),
 }
 
 #[contract]
@@ -217,33 +314,34 @@ pub struct Programme;
 impl Programme {
     pub fn __constructor(
         env: Env,
-        creator: Address,
-        token: Address,
-        treasury: Address,
-        fee_bps: u32,
-        apply_deadline: u64,
-        review_deadline: u64,
-        quorum: u32,
-        tranches: u32,
-        metadata_hash: BytesN<32>,
+        config: Config,
         reviewers: Vec<Address>,
+        verifiers: Vec<Address>,
     ) -> Result<(), Error> {
-        if fee_bps > MAX_FEE_BPS {
+        if config.fee_bps > MAX_FEE_BPS {
             return Err(Error::FeeTooHigh);
         }
         let now = env.ledger().timestamp();
-        if apply_deadline <= now || review_deadline <= apply_deadline {
+        if config.apply_deadline <= now
+            || config.review_deadline <= config.apply_deadline
+            || config.release_deadline <= config.review_deadline
+        {
             return Err(Error::InvalidDeadlines);
         }
         if reviewers.is_empty() {
             return Err(Error::NoReviewers);
         }
+        // Without a trusted attester no tranche could ever be released, so the
+        // programme would take money it could never pay out.
+        if verifiers.is_empty() {
+            return Err(Error::NoVerifiers);
+        }
         // Quorum above the reviewer count would make every application
         // permanently unfinalisable.
-        if quorum == 0 || quorum > MAX_QUORUM || quorum > reviewers.len() {
+        if config.quorum == 0 || config.quorum > MAX_QUORUM || config.quorum > reviewers.len() {
             return Err(Error::InvalidQuorum);
         }
-        if tranches == 0 {
+        if config.tranches == 0 {
             return Err(Error::InvalidAmount);
         }
 
@@ -252,23 +350,16 @@ impl Programme {
                 .persistent()
                 .set(&Key::Reviewer(reviewer), &true);
         }
+        for verifier in verifiers.iter() {
+            env.storage()
+                .persistent()
+                .set(&Key::Verifier(verifier), &true);
+        }
 
-        env.storage().instance().set(
-            &Key::Config,
-            &Config {
-                creator,
-                token,
-                treasury,
-                fee_bps,
-                apply_deadline,
-                review_deadline,
-                quorum,
-                tranches,
-                metadata_hash,
-            },
-        );
+        env.storage().instance().set(&Key::Config, &config);
         env.storage().instance().set(&Key::Contributed, &0i128);
         env.storage().instance().set(&Key::Granted, &0i128);
+        env.storage().instance().set(&Key::Released, &0i128);
         Ok(())
     }
 
@@ -495,6 +586,206 @@ impl Programme {
         Ok(award)
     }
 
+    /// Release one tranche against a proof that the condition was met.
+    ///
+    /// Permissionless to call, because everything that decides the outcome is
+    /// already on-chain: the award, the trusted verifier set, and an attestation
+    /// the verifier already signed. Requiring a privileged trigger would let
+    /// whoever holds it withhold money a recipient has already earned.
+    ///
+    /// `attester` names which trusted verifier is being relied on. The programme
+    /// checks it trusts them; the attestation registry checks the claim really
+    /// is theirs, really is about this recipient, and really is under this
+    /// programme's schema.
+    pub fn release(
+        env: Env,
+        recipient: Address,
+        attestation: BytesN<32>,
+        attester: Address,
+    ) -> Result<i128, Error> {
+        let config = Self::config(&env)?;
+        if Self::phase(&env)? == Phase::Cancelled {
+            return Err(Error::Cancelled);
+        }
+        if env.ledger().timestamp() >= config.release_deadline {
+            return Err(Error::ReleaseWindowClosed);
+        }
+
+        if !env
+            .storage()
+            .persistent()
+            .has(&Key::Verifier(attester.clone()))
+        {
+            return Err(Error::NotAuthorized);
+        }
+
+        // One proof, one tranche. Without this a single attestation would
+        // unlock the whole award.
+        let used = Key::Used(attestation.clone());
+        if env.storage().persistent().has(&used) {
+            return Err(Error::AttestationAlreadyUsed);
+        }
+
+        if !AttestClient::new(&env, &config.attest).verify(
+            &attestation,
+            &recipient,
+            &config.schema,
+            &attester,
+        ) {
+            return Err(Error::AttestationInvalid);
+        }
+
+        let key = Key::Award(recipient.clone());
+        let mut award: Award = env
+            .storage()
+            .persistent()
+            .get(&key)
+            .ok_or(Error::AwardNotFound)?;
+        if award.tranches_released >= award.tranches {
+            return Err(Error::AwardFullyReleased);
+        }
+
+        // The final tranche takes the remainder so integer division cannot
+        // strand dust in the contract.
+        award.tranches_released += 1;
+        let amount = if award.tranches_released == award.tranches {
+            award.granted - award.released
+        } else {
+            award.granted / award.tranches as i128
+        };
+        award.released += amount;
+
+        env.storage().persistent().set(&key, &award);
+        env.storage()
+            .persistent()
+            .extend_ttl(&key, BUMP_THRESHOLD, BUMP_LEDGERS);
+        env.storage().persistent().set(&used, &true);
+        env.storage()
+            .persistent()
+            .extend_ttl(&used, BUMP_THRESHOLD, BUMP_LEDGERS);
+
+        let released: i128 = env.storage().instance().get(&Key::Released).unwrap_or(0);
+        env.storage().instance().set(
+            &Key::Released,
+            &released.checked_add(amount).ok_or(Error::Overflow)?,
+        );
+
+        token::Client::new(&env, &config.token).transfer(
+            &env.current_contract_address(),
+            &award.payee,
+            &amount,
+        );
+
+        // Credit standing last: the recipient's track record should describe
+        // money that actually moved.
+        StandingClient::new(&env, &config.record).credit(
+            &env.current_contract_address(),
+            &recipient,
+            &env.current_contract_address(),
+            &amount,
+            &attestation,
+        );
+
+        Released {
+            recipient,
+            payee: award.payee.clone(),
+            amount,
+            attestation,
+            award,
+        }
+        .publish(&env);
+        Ok(amount)
+    }
+
+    /// Send the protocol's cut to the treasury. Permissionless and once only.
+    ///
+    /// The fee was never part of the awardable budget, so this moves money that
+    /// was never promised to anyone. It waits for contributions to close so the
+    /// amount cannot change underneath it.
+    pub fn sweep_fee(env: Env) -> Result<i128, Error> {
+        let config = Self::config(&env)?;
+        if Self::phase(&env)? == Phase::Open {
+            return Err(Error::WrongPhase);
+        }
+        if env.storage().instance().get::<_, bool>(&Key::FeeSwept) == Some(true) {
+            return Err(Error::FeeAlreadySwept);
+        }
+
+        let total: i128 = env.storage().instance().get(&Key::Contributed).unwrap_or(0);
+        let fee = total
+            .checked_mul(config.fee_bps as i128)
+            .ok_or(Error::Overflow)?
+            / BPS_DENOMINATOR;
+
+        env.storage().instance().set(&Key::FeeSwept, &true);
+        if fee > 0 {
+            token::Client::new(&env, &config.token).transfer(
+                &env.current_contract_address(),
+                &config.treasury,
+                &fee,
+            );
+        }
+
+        FeeSwept { amount: fee }.publish(&env);
+        Ok(fee)
+    }
+
+    /// Reclaim a proportional share of whatever was never paid out.
+    ///
+    /// Covers both money no one was awarded and money awarded but never
+    /// released — a recipient who never produced a proof leaves their tranches
+    /// in the pool, and after the release window those go back to the people who
+    /// put them in rather than sitting stranded.
+    pub fn refund(env: Env, donor: Address) -> Result<i128, Error> {
+        let config = Self::config(&env)?;
+        let cancelled = Self::phase(&env)? == Phase::Cancelled;
+        if !cancelled && env.ledger().timestamp() < config.release_deadline {
+            return Err(Error::RefundsNotOpen);
+        }
+
+        let refunded_key = Key::Refunded(donor.clone());
+        if env.storage().persistent().has(&refunded_key) {
+            return Err(Error::AlreadyRefunded);
+        }
+
+        let contributed: i128 = env
+            .storage()
+            .persistent()
+            .get(&Key::Donor(donor.clone()))
+            .unwrap_or(0);
+        if contributed == 0 {
+            return Err(Error::NothingToRefund);
+        }
+
+        let total: i128 = env.storage().instance().get(&Key::Contributed).unwrap_or(0);
+        let released: i128 = env.storage().instance().get(&Key::Released).unwrap_or(0);
+        let unpaid = Self::available(&env, &config)? - released;
+        if unpaid <= 0 {
+            return Err(Error::NothingToRefund);
+        }
+
+        // Proportional to what this donor put in, so rounding cannot let the
+        // sum of refunds exceed what is actually left.
+        let amount = contributed.checked_mul(unpaid).ok_or(Error::Overflow)? / total;
+        if amount <= 0 {
+            return Err(Error::NothingToRefund);
+        }
+
+        env.storage().persistent().set(&refunded_key, &true);
+        env.storage()
+            .persistent()
+            .extend_ttl(&refunded_key, BUMP_THRESHOLD, BUMP_LEDGERS);
+
+        token::Client::new(&env, &config.token).transfer(
+            &env.current_contract_address(),
+            &donor,
+            &amount,
+        );
+
+        Refunded { donor, amount }.publish(&env);
+        Ok(amount)
+    }
+
     /// Abandon a programme before it has taken on any obligations. Only possible
     /// while nothing has been contributed and nothing awarded, so this can never
     /// strand someone else's money.
@@ -578,6 +869,19 @@ impl Programme {
 
     pub fn total_granted(env: Env) -> i128 {
         env.storage().instance().get(&Key::Granted).unwrap_or(0)
+    }
+
+    pub fn total_released(env: Env) -> i128 {
+        env.storage().instance().get(&Key::Released).unwrap_or(0)
+    }
+
+    pub fn is_verifier(env: Env, addr: Address) -> bool {
+        env.storage().persistent().has(&Key::Verifier(addr))
+    }
+
+    /// Whether this attestation has already unlocked a tranche.
+    pub fn is_spent(env: Env, attestation: BytesN<32>) -> bool {
+        env.storage().persistent().has(&Key::Used(attestation))
     }
 
     pub fn is_reviewer(env: Env, addr: Address) -> bool {
