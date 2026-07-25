@@ -51,7 +51,7 @@ a *recipient*, and what that means is set per programme:
 | `record` | Portable, non-transferable recipient standing. | Built |
 | `registry` | Factory and protocol configuration. | Built |
 | `program` | A funding programme: contributions, applications, review, partial awards. | Built |
-| `treasury` | Multisig over protocol fees. | Phase 3 |
+| `treasury` | Multisig over protocol fees. | Phase 4 |
 | `policy_spend` | Policy signer restricting a smart wallet to verified payees. | Phase 4 |
 
 `attest`, `record` and `policy_spend` are deliberately free of any dependency on
@@ -91,13 +91,20 @@ stellar contract build      # optimised wasm
 
 ## Status
 
-Early, but the money path exists. Phases 0–2 are done: 77 tests, four contracts
+The full money path works. Phases 0–3 are done: 100 tests, four contracts
 building to wasm, and an end-to-end route from contribution through application,
-review and partial award.
+review, partial award, attestation-gated release, fee settlement and refunds.
 
-Phase 3 is what makes it Milepost rather than another grants app — tranches that
-release only against a valid attestation, and the refund and recycle paths for
-money that is never claimed.
+A tranche releases only when the attestation registry confirms the claim is
+valid, is about this recipient, is under this programme's schema, and really was
+signed by a verifier the programme trusts. One proof unlocks exactly one
+tranche. Whatever is never released — unawarded budget or tranches nobody
+claimed — goes back to contributors proportionally once the release window
+closes, rather than sitting stranded.
+
+Phase 4 adds the policy signer and passkey onboarding, which turn on `Restricted`
+mode: a tranche paid into the recipient's own wallet that can still only be spent
+with verified payees.
 
 ## Licence
 
