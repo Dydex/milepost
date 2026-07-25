@@ -1,0 +1,18 @@
+[package]
+name = "milepost-types"
+description = "Types shared across Milepost contracts"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[lib]
+# Deliberately no cdylib. This crate defines types and no contract, so nothing
+# here is exported as a wasm symbol — which is precisely what lets several
+# contracts depend on it without colliding at link time.
+crate-type = ["lib"]
+doctest = false
+
+[dependencies]
+soroban-sdk = { workspace = true }
