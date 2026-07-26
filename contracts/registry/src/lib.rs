@@ -26,6 +26,14 @@ use soroban_sdk::{
     BytesN, Env, String, Vec,
 };
 
+/// The programme configuration this registry constructs.
+///
+/// Shared with the programme itself rather than mirrored. A mirrored struct
+/// drifts silently — the failure is not a compile error but a value decoded
+/// into the wrong shape at runtime, after a call has already moved money.
+/// Sharing it turns that into a build failure at the point of change.
+pub use milepost_types::ProgrammeConfig;
+
 /// The slice of the standing contract this registry needs.
 ///
 /// Declared rather than imported on purpose. Depending on the `record` crate
@@ -53,32 +61,6 @@ pub enum Error {
     NotAuthorized = 1,
     FeeTooHigh = 2,
     NotInitialized = 3,
-}
-
-/// Mirror of the programme's own `Config`.
-///
-/// The registry cannot depend on the programme crate — linking it would export
-/// its contract symbols from this wasm too — so the shape is duplicated here.
-/// The field order and types must match exactly, and the registry's tests read
-/// the deployed programme's config back through its wasm client, so a drift
-/// between the two fails the build rather than producing a subtly broken
-/// programme.
-#[contracttype]
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct ProgrammeConfig {
-    pub creator: Address,
-    pub token: Address,
-    pub treasury: Address,
-    pub attest: Address,
-    pub record: Address,
-    pub schema: BytesN<32>,
-    pub fee_bps: u32,
-    pub apply_deadline: u64,
-    pub review_deadline: u64,
-    pub release_deadline: u64,
-    pub quorum: u32,
-    pub tranches: u32,
-    pub metadata_hash: BytesN<32>,
 }
 
 #[contracttype]
@@ -164,6 +146,7 @@ impl Registry {
         apply_deadline: u64,
         review_deadline: u64,
         release_deadline: u64,
+        sweep_deadline: u64,
         quorum: u32,
         tranches: u32,
         metadata_hash: BytesN<32>,
@@ -197,6 +180,7 @@ impl Registry {
                         apply_deadline,
                         review_deadline,
                         release_deadline,
+                        sweep_deadline,
                         quorum,
                         tranches,
                         metadata_hash,

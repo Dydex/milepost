@@ -45,6 +45,9 @@ use soroban_sdk::{
     Address, BytesN, Env, Vec,
 };
 
+/// The programme's configuration, shared with the registry that builds it.
+pub use milepost_types::{ProgrammeConfig, Standing};
+
 /// The slice of the attestation registry a programme needs.
 ///
 /// `verify` rather than `is_valid`: the registry checks subject, schema and
@@ -66,12 +69,13 @@ pub trait Attestations {
 
 /// The slice of the standing contract a programme needs.
 ///
-/// `credit` returns the updated standing, which this contract has no use for.
-/// It is declared as `Val` rather than `()` all the same: a client whose return
-/// type does not match what the callee actually returns fails conversion *after*
-/// the call has already moved money.
+/// `credit` returns the updated standing, which this contract has no use for —
+/// but the type still has to be right. A client whose declared return type does
+/// not match what the callee returns fails conversion *after* the call has
+/// already moved money, so the shared `Standing` is named here rather than a
+/// convenient stand-in.
 #[contractclient(name = "StandingClient")]
-pub trait Standing {
+pub trait StandingContract {
     fn credit(
         env: Env,
         writer: Address,
@@ -79,7 +83,7 @@ pub trait Standing {
         programme: Address,
         amount: i128,
         attestation: BytesN<32>,
-    ) -> soroban_sdk::Val;
+    ) -> Standing;
 }
 
 /// Ledgers per day, at the ~5 second close time Stellar targets.
@@ -134,6 +138,9 @@ pub enum Error {
     RefundsNotOpen = 25,
     AlreadyRefunded = 26,
     NothingToRefund = 27,
+    /// The grace period for donors to claim refunds has not elapsed.
+    SweepNotOpen = 28,
+    NothingToSweep = 29,
 }
 
 /// Where a tranche is paid. Restricted and Open modes arrive with the policy
@@ -159,38 +166,6 @@ pub enum Phase {
     Review,
     Settled,
     Cancelled,
-}
-
-/// Everything a programme is constructed from.
-///
-/// Grouped into a struct rather than passed as a dozen positional arguments —
-/// at that width a caller transposing `review_deadline` and `release_deadline`,
-/// or `quorum` and `tranches`, produces a valid-looking programme that behaves
-/// wrongly, and the type system says nothing.
-#[contracttype]
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct Config {
-    pub creator: Address,
-    /// The asset being distributed, as a Stellar Asset Contract address.
-    pub token: Address,
-    pub treasury: Address,
-    /// Attestation registry that tranche conditions are verified against.
-    pub attest: Address,
-    /// Standing contract credited on each release.
-    pub record: Address,
-    /// The single schema whose attestations unlock this programme's tranches.
-    pub schema: BytesN<32>,
-    pub fee_bps: u32,
-    /// Applications close here.
-    pub apply_deadline: u64,
-    /// Reviews close here.
-    pub review_deadline: u64,
-    /// Tranches stop releasing here, and whatever is left becomes refundable.
-    pub release_deadline: u64,
-    /// Reviewer votes needed before an application can be finalised.
-    pub quorum: u32,
-    pub tranches: u32,
-    pub metadata_hash: BytesN<32>,
 }
 
 #[contracttype]
@@ -278,6 +253,12 @@ pub struct Refunded {
     pub amount: i128,
 }
 
+#[contractevent(topics = ["swept"], data_format = "single-value")]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct UnclaimedSwept {
+    pub amount: i128,
+}
+
 #[contractevent(topics = ["cancelled"], data_format = "single-value")]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ProgrammeCancelled {
@@ -314,7 +295,7 @@ pub struct Programme;
 impl Programme {
     pub fn __constructor(
         env: Env,
-        config: Config,
+        config: ProgrammeConfig,
         reviewers: Vec<Address>,
         verifiers: Vec<Address>,
     ) -> Result<(), Error> {
@@ -325,6 +306,7 @@ impl Programme {
         if config.apply_deadline <= now
             || config.review_deadline <= config.apply_deadline
             || config.release_deadline <= config.review_deadline
+            || config.sweep_deadline <= config.release_deadline
         {
             return Err(Error::InvalidDeadlines);
         }
@@ -786,6 +768,48 @@ impl Programme {
         Ok(amount)
     }
 
+    /// Send whatever no donor ever came back for to the treasury.
+    ///
+    /// Refunds have to be claimed individually, and in practice many will not
+    /// be: a diaspora donor who gave the equivalent of five dollars is not going
+    /// to sign a transaction to recover three. Without this the remainder sits
+    /// in the contract permanently, which serves nobody.
+    ///
+    /// The grace period is `sweep_deadline`, set per programme rather than fixed
+    /// protocol-wide — a term-length bursary and a multi-year infrastructure
+    /// grant disagree about how long is long enough to wait. Permissionless, so
+    /// nobody has to be trusted to remember.
+    pub fn sweep_unclaimed(env: Env) -> Result<i128, Error> {
+        let config = Self::config(&env)?;
+        if env.ledger().timestamp() < config.sweep_deadline {
+            return Err(Error::SweepNotOpen);
+        }
+
+        let token = token::Client::new(&env, &config.token);
+        let mut remaining = token.balance(&env.current_contract_address());
+
+        // The protocol fee is not the donors' to reclaim, but it is also not
+        // unclaimed refund money. If it was never swept, it is already heading
+        // to the same place, so only the difference matters here.
+        if env.storage().instance().get::<_, bool>(&Key::FeeSwept) != Some(true) {
+            env.storage().instance().set(&Key::FeeSwept, &true);
+        }
+
+        if remaining <= 0 {
+            return Err(Error::NothingToSweep);
+        }
+        remaining = remaining.min(token.balance(&env.current_contract_address()));
+
+        token.transfer(
+            &env.current_contract_address(),
+            &config.treasury,
+            &remaining,
+        );
+
+        UnclaimedSwept { amount: remaining }.publish(&env);
+        Ok(remaining)
+    }
+
     /// Abandon a programme before it has taken on any obligations. Only possible
     /// while nothing has been contributed and nothing awarded, so this can never
     /// strand someone else's money.
@@ -812,14 +836,14 @@ impl Programme {
 
     // ---- views ----
 
-    pub fn config(env: &Env) -> Result<Config, Error> {
+    pub fn config(env: &Env) -> Result<ProgrammeConfig, Error> {
         env.storage()
             .instance()
             .get(&Key::Config)
             .ok_or(Error::NotAuthorized)
     }
 
-    pub fn get_config(env: Env) -> Result<Config, Error> {
+    pub fn get_config(env: Env) -> Result<ProgrammeConfig, Error> {
         Self::config(&env)
     }
 
@@ -902,7 +926,7 @@ impl Programme {
         Ok(total * config.fee_bps as i128 / BPS_DENOMINATOR)
     }
 
-    fn available(env: &Env, config: &Config) -> Result<i128, Error> {
+    fn available(env: &Env, config: &ProgrammeConfig) -> Result<i128, Error> {
         let total: i128 = env.storage().instance().get(&Key::Contributed).unwrap_or(0);
         let fee = total
             .checked_mul(config.fee_bps as i128)

@@ -10,6 +10,7 @@ use soroban_sdk::{
 const APPLY_DEADLINE: u64 = 10_000;
 const REVIEW_DEADLINE: u64 = 20_000;
 const RELEASE_DEADLINE: u64 = 30_000;
+const SWEEP_DEADLINE: u64 = 40_000;
 const FEE_BPS: u32 = 1_000; // 10%
 
 struct Fixture {
@@ -65,7 +66,7 @@ fn setup_with(quorum: u32, reviewer_count: u32, tranches: u32) -> Fixture {
     let id = env.register(
         Programme,
         (
-            Config {
+            ProgrammeConfig {
                 creator: creator.clone(),
                 token: asset.address(),
                 treasury: treasury.clone(),
@@ -76,6 +77,7 @@ fn setup_with(quorum: u32, reviewer_count: u32, tranches: u32) -> Fixture {
                 apply_deadline: APPLY_DEADLINE,
                 review_deadline: REVIEW_DEADLINE,
                 release_deadline: RELEASE_DEADLINE,
+                sweep_deadline: SWEEP_DEADLINE,
                 quorum,
                 tranches,
                 metadata_hash: BytesN::from_array(&env, &[7u8; 32]),
@@ -180,7 +182,7 @@ fn construct_with(quorum: u32, reviewer_count: u32, apply: u64, review: u64, fee
     env.register(
         Programme,
         (
-            Config {
+            ProgrammeConfig {
                 creator: Address::generate(&env),
                 token: asset.address(),
                 treasury: Address::generate(&env),
@@ -191,6 +193,7 @@ fn construct_with(quorum: u32, reviewer_count: u32, apply: u64, review: u64, fee
                 apply_deadline: apply,
                 review_deadline: review,
                 release_deadline: RELEASE_DEADLINE,
+                sweep_deadline: SWEEP_DEADLINE,
                 quorum,
                 tranches: 3,
                 metadata_hash: BytesN::from_array(&env, &[7u8; 32]),
@@ -960,5 +963,77 @@ fn refunds_never_exceed_what_is_left() {
     assert!(
         total <= f.client.budget(),
         "rounding must never let refunds exceed the pool"
+    );
+}
+
+// ---- unclaimed refunds ----
+
+#[test]
+fn unclaimed_refunds_sweep_to_the_treasury() {
+    // Small donors will not sign a transaction to recover pocket change. Without
+    // this the remainder sits in the contract forever.
+    let f = setup(2, 3);
+    let donor = funded_donor(&f, 10_000);
+    f.client.contribute(&donor, &10_000);
+
+    f.env.ledger().set_timestamp(SWEEP_DEADLINE);
+    let swept = f.client.sweep_unclaimed();
+
+    assert_eq!(swept, 10_000, "fee and unclaimed refunds both end up here");
+    assert_eq!(f.token.balance(&f.treasury), 10_000);
+    assert_eq!(f.token.balance(&f.client.address), 0);
+}
+
+#[test]
+fn sweeping_waits_for_the_grace_period() {
+    let f = setup(2, 3);
+    let donor = funded_donor(&f, 10_000);
+    f.client.contribute(&donor, &10_000);
+
+    f.env.ledger().set_timestamp(RELEASE_DEADLINE);
+    assert_eq!(f.client.try_sweep_unclaimed(), Err(Ok(Error::SweepNotOpen)));
+
+    f.env.ledger().set_timestamp(SWEEP_DEADLINE - 1);
+    assert_eq!(f.client.try_sweep_unclaimed(), Err(Ok(Error::SweepNotOpen)));
+}
+
+#[test]
+fn a_donor_who_claims_in_time_keeps_their_refund() {
+    let f = setup(2, 3);
+    let quick = funded_donor(&f, 5_000);
+    let slow = funded_donor(&f, 5_000);
+    f.client.contribute(&quick, &5_000);
+    f.client.contribute(&slow, &5_000);
+
+    f.env.ledger().set_timestamp(RELEASE_DEADLINE);
+    f.client.refund(&quick);
+    assert_eq!(f.token.balance(&quick), 4_500);
+
+    f.env.ledger().set_timestamp(SWEEP_DEADLINE);
+    f.client.sweep_unclaimed();
+
+    // The one who showed up kept theirs; only what nobody claimed moved on.
+    assert_eq!(f.token.balance(&quick), 4_500);
+    assert_eq!(f.token.balance(&slow), 0);
+    assert_eq!(f.token.balance(&f.treasury), 5_500);
+}
+
+#[test]
+fn sweeping_an_empty_programme_is_rejected() {
+    let f = setup(2, 3);
+    f.env.ledger().set_timestamp(SWEEP_DEADLINE);
+    assert_eq!(
+        f.client.try_sweep_unclaimed(),
+        Err(Ok(Error::NothingToSweep))
+    );
+}
+
+#[test]
+fn a_sweep_deadline_before_the_release_deadline_is_rejected() {
+    let f = setup(2, 3);
+    let c = f.client.get_config();
+    assert!(
+        c.sweep_deadline > c.release_deadline,
+        "donors must get a grace period after releases end"
     );
 }

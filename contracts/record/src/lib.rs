@@ -37,6 +37,10 @@ use soroban_sdk::{
     BytesN, Env,
 };
 
+/// Re-exported so callers get the same definition this contract writes, rather
+/// than a copy that can drift from it.
+pub use milepost_types::Standing;
+
 /// Ledgers per day, at the ~5 second close time Stellar targets.
 const DAY_IN_LEDGERS: u32 = 17_280;
 /// How far ahead persistent entries are pushed whenever they are touched.
@@ -59,24 +63,6 @@ pub enum Error {
     Overflow = 4,
     AlreadyWriter = 5,
     NotWriter = 6,
-}
-
-/// What a funder reads when deciding whether to underwrite someone.
-#[contracttype]
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct Standing {
-    pub subject: Address,
-    /// Distinct programmes this recipient has been credited under.
-    pub programmes: u32,
-    /// Tranches released to them, across all programmes.
-    pub tranches: u32,
-    pub total_received: i128,
-    pub first_seen: u64,
-    pub last_updated: u64,
-    /// Hash chain over every credit, in order. Genesis is all zeroes; each
-    /// credit sets `root = sha256(root ‖ programme ‖ amount ‖ attestation ‖ ts)`.
-    /// Lets anyone verify a full off-chain history against on-chain state.
-    pub history_root: BytesN<32>,
 }
 
 #[contractevent(topics = ["credit"], data_format = "single-value")]

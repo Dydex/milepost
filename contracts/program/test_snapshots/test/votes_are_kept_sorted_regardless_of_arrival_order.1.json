@@ -873,6 +873,14 @@
                           },
                           {
                             "key": {
+                              "symbol": "sweep_deadline"
+                            },
+                            "val": {
+                              "u64": "40000"
+                            }
+                          },
+                          {
+                            "key": {
                               "symbol": "token"
                             },
                             "val": {

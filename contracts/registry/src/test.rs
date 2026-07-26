@@ -14,6 +14,7 @@ const FEE_BPS: u32 = 1_000;
 const APPLY_DEADLINE: u64 = 10_000;
 const REVIEW_DEADLINE: u64 = 20_000;
 const RELEASE_DEADLINE: u64 = 30_000;
+const SWEEP_DEADLINE: u64 = 40_000;
 
 struct Fixture {
     env: Env,
@@ -73,6 +74,7 @@ fn create(f: &Fixture, creator: &Address) -> Address {
         &APPLY_DEADLINE,
         &REVIEW_DEADLINE,
         &RELEASE_DEADLINE,
+        &SWEEP_DEADLINE,
         &2u32,
         &3u32,
         &BytesN::from_array(&f.env, &[7u8; 32]),
