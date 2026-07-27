@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["contracts/*"]
+members = ["contracts/*", "crates/*"]
 
 [workspace.package]
 version = "0.1.0"
@@ -11,6 +11,7 @@ repository = "https://github.com/milepost-labs/milepost"
 
 [workspace.dependencies]
 soroban-sdk = "27.0.6"
+milepost-types = { path = "crates/types" }
 
 # Soroban contracts are billed by deployed WASM size and by CPU instructions, so
 # the release profile optimises for size first. `overflow-checks` stays on: an

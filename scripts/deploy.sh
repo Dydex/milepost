@@ -33,6 +33,8 @@ DEPLOYER="$(stellar keys address "$SOURCE")"
 echo "==> Deployer: $DEPLOYER"
 
 echo "==> Building"
+# crates/types has no cdylib and so produces no wasm; the build skips it rather
+# than failing on it.
 (cd "$ROOT" && stellar contract build)
 
 deploy() {
