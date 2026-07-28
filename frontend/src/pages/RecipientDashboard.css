@@ -1,0 +1,90 @@
+.milestones-section h2 {
+  margin-bottom: 1.5rem;
+}
+
+.milestones-timeline {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+  position: relative;
+}
+
+.milestones-timeline::before {
+  content: '';
+  position: absolute;
+  left: 24px; /* Center of the icon */
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background-color: var(--surface-border);
+  z-index: 0;
+}
+
+.milestone-card {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  gap: 1.5rem;
+  padding: 1.5rem;
+  transition: transform var(--transition-fast);
+}
+
+.milestone-card:hover {
+  transform: translateX(4px);
+}
+
+.milestone-icon {
+  flex-shrink: 0;
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: var(--surface-color);
+  border: 2px solid var(--surface-border);
+  color: var(--text-muted);
+}
+
+.milestone-card.unlocked .milestone-icon {
+  background-color: var(--color-success);
+  border-color: var(--color-success);
+  color: white;
+}
+
+.milestone-card.locked .milestone-icon {
+  background-color: var(--surface-hover);
+}
+
+.milestone-details {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.milestone-details h3 {
+  margin: 0;
+  font-size: 1.25rem;
+}
+
+.milestone-meta {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 0.5rem;
+  padding-top: 1rem;
+  border-top: 1px dashed var(--surface-border);
+}
+
+.milestone-meta .amount {
+  font-weight: 800;
+  font-size: 1.25rem;
+}
+
+.milestone-meta .status {
+  font-weight: 600;
+  font-size: 0.875rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
