@@ -1,12 +1,9 @@
 import React from 'react';
-import { useTheme } from '../../context/ThemeContext';
-import { Moon, Sun, Wallet } from 'lucide-react';
+import { Wallet } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import './Navbar.css';
 
 export const Navbar: React.FC = () => {
-  const { theme, toggleTheme } = useTheme();
-
   return (
     <header className="navbar glass-panel">
       <div className="navbar-container">
@@ -24,10 +21,6 @@ export const Navbar: React.FC = () => {
         </nav>
 
         <div className="navbar-actions">
-          <button onClick={toggleTheme} className="theme-toggle-btn" aria-label="Toggle theme">
-            {theme === 'light' ? <Moon size={20} /> : <Sun size={20} />}
-          </button>
-          
           <button className="btn-primary connect-wallet-btn">
             <Wallet size={18} />
             Connect Wallet
