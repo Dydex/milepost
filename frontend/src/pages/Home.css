@@ -309,16 +309,179 @@
   justify-content: center;
   background: var(--surface-hover);
   border-radius: 12px;
+  overflow: hidden;
+  padding: 2rem;
 }
 
-.visual-icon {
-  color: var(--surface-border);
-  width: 80px;
-  height: 80px;
+/* Abstract Hand-Coded UI Blocks */
+.mini-ui {
+  width: 100%;
+  max-width: 280px;
+  background: var(--surface-color);
+  border-radius: 8px;
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.05);
+  border: 1px solid var(--surface-border);
+  overflow: hidden;
+  transform: translateY(0);
+  transition: transform var(--transition-normal);
 }
 
-[data-theme='dark'] .visual-icon {
-  color: rgba(255, 255, 255, 0.05);
+.grid-visual:hover .mini-ui {
+  transform: translateY(-5px);
+}
+
+/* Funder UI */
+.funder-ui .mini-header {
+  padding: 1rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  border-bottom: 1px solid var(--surface-border);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.funder-ui .mini-body {
+  padding: 1.5rem 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.mini-stat {
+  display: flex;
+  flex-direction: column;
+}
+
+.mini-stat span {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+
+.mini-stat strong {
+  font-size: 1.5rem;
+  color: var(--text-main);
+}
+
+.mini-progress-bar {
+  height: 6px;
+  background: var(--surface-hover);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.mini-progress-fill {
+  height: 100%;
+  background: var(--color-primary-light);
+  border-radius: 3px;
+}
+
+/* Verifier UI */
+.verifier-ui {
+  padding: 1.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 2rem;
+  background: #fff;
+}
+
+.doc-lines {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.doc-line {
+  height: 8px;
+  background: var(--surface-border);
+  border-radius: 4px;
+  width: 100%;
+}
+
+.doc-line.title {
+  height: 12px;
+  width: 60%;
+  background: var(--text-muted);
+  margin-bottom: 0.5rem;
+}
+
+.doc-line.short {
+  width: 80%;
+}
+
+.doc-seal {
+  align-self: flex-end;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 1rem;
+  background: rgba(16, 185, 129, 0.1);
+  color: var(--color-success);
+  border-radius: 9999px;
+  font-weight: 600;
+  font-size: 0.85rem;
+  border: 1px solid rgba(16, 185, 129, 0.2);
+}
+
+/* Tranche UI */
+.tranche-ui {
+  padding: 1.5rem;
+  display: flex;
+  flex-direction: column;
+}
+
+.tranche-item {
+  display: flex;
+  gap: 1rem;
+  align-items: center;
+}
+
+.tranche-item.locked {
+  opacity: 0.5;
+}
+
+.tranche-icon {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: var(--surface-hover);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-muted);
+}
+
+.tranche-icon.success {
+  background: var(--color-success);
+  color: white;
+}
+
+.tranche-details {
+  display: flex;
+  flex-direction: column;
+}
+
+.tranche-name {
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+
+.tranche-amount {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+
+.tranche-amount.text-success {
+  color: var(--color-success);
+}
+
+.tranche-line {
+  height: 24px;
+  width: 2px;
+  background: var(--surface-border);
+  margin-left: 15px;
+  margin-top: 0.5rem;
+  margin-bottom: 0.5rem;
 }
 
 /* Full Bleed Infrastructure CTA */

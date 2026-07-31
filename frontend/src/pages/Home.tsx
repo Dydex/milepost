@@ -124,7 +124,18 @@ export const Home: React.FC = () => {
               <p className="text-muted">Donors pool USDC into a specific program via SEP-24 ramps. Unused tranches automatically recycle for the next cohort, ensuring capital efficiency.</p>
             </div>
             <div className="grid-visual glass-panel">
-              <Network size={48} className="visual-icon" />
+              <div className="mini-ui funder-ui">
+                <div className="mini-header">Program Vault</div>
+                <div className="mini-body">
+                  <div className="mini-stat">
+                    <span>USDC Locked</span>
+                    <strong>$250,000</strong>
+                  </div>
+                  <div className="mini-progress-bar">
+                    <div className="mini-progress-fill" style={{ width: '75%' }}></div>
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
 
@@ -135,7 +146,17 @@ export const Home: React.FC = () => {
               <p className="text-muted">Instead of committee votes, trusted Institutions (like Universities or Clinics) cryptographically sign on-chain attestations when real-world conditions are met.</p>
             </div>
             <div className="grid-visual glass-panel">
-              <Shield size={48} className="visual-icon" />
+              <div className="mini-ui verifier-ui">
+                <div className="doc-lines">
+                  <div className="doc-line title"></div>
+                  <div className="doc-line"></div>
+                  <div className="doc-line short"></div>
+                </div>
+                <div className="doc-seal">
+                  <Shield size={20} className="seal-icon" />
+                  <span>Attested</span>
+                </div>
+              </div>
             </div>
           </div>
 
@@ -146,7 +167,23 @@ export const Home: React.FC = () => {
               <p className="text-muted">Attestations trigger a release. Tuition tranches are policy-restricted to only pay the University, while stipends land directly in the recipient's wallet.</p>
             </div>
             <div className="grid-visual glass-panel">
-              <Layers size={48} className="visual-icon" />
+              <div className="mini-ui tranche-ui">
+                <div className="tranche-item">
+                  <div className="tranche-icon success"><Unlock size={16} /></div>
+                  <div className="tranche-details">
+                    <div className="tranche-name">Tuition</div>
+                    <div className="tranche-amount text-success">$1,500 Disbursed</div>
+                  </div>
+                </div>
+                <div className="tranche-line"></div>
+                <div className="tranche-item locked">
+                  <div className="tranche-icon"><Lock size={16} /></div>
+                  <div className="tranche-details">
+                    <div className="tranche-name">Stipend</div>
+                    <div className="tranche-amount">$1,000 Locked</div>
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
         </div>
