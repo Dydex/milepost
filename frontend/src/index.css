@@ -34,20 +34,7 @@
   --transition-normal: 300ms ease-out;
 }
 
-[data-theme='dark'] {
-  /* Dark Mode: Deep, inky slate, very minimal */
-  --bg-color: hsl(222, 47%, 8%);
-  --surface-color: hsl(222, 47%, 11%);
-  --surface-hover: hsl(222, 47%, 15%);
-  --surface-border: hsl(217, 33%, 17%);
-  
-  --text-main: hsl(210, 40%, 98%);
-  --text-muted: hsl(215, 20%, 65%);
-  
-  --glass-bg: rgba(15, 23, 42, 0.7);
-  --glass-border: rgba(255, 255, 255, 0.08);
-  --glass-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.5);
-}
+
 
 /* Global Reset & Base Styles */
 * {
@@ -91,10 +78,7 @@ body {
   gap: 0.5rem;
 }
 
-[data-theme='dark'] .btn-primary {
-  background-color: var(--color-primary-dark);
-  color: hsl(222, 47%, 11%);
-}
+
 
 .btn-primary:hover {
   filter: brightness(1.1);
@@ -135,9 +119,7 @@ a {
   transition: color var(--transition-fast);
 }
 
-[data-theme='dark'] a {
-  color: var(--color-primary-dark);
-}
+
 
 a:hover {
   opacity: 0.8;
