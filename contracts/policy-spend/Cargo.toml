@@ -1,0 +1,22 @@
+[package]
+name = "milepost-policy-spend"
+description = "Smart wallet policy signer restricting spend to verified payees"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[lib]
+crate-type = ["lib", "cdylib"]
+doctest = false
+
+[dependencies]
+soroban-sdk = { workspace = true }
+# Not published to crates.io, so pinned by revision rather than version. The
+# SignerKey and PolicyInterface definitions must be the wallet's own — a mirrored
+# copy is the exact drift that crates/types exists to prevent.
+smart-wallet-interface = { git = "https://github.com/stellar/passkey-kit", rev = "9a8c9ffc7dd7669ab86378167d698e53dda82174" }
+
+[dev-dependencies]
+soroban-sdk = { workspace = true, features = ["testutils"] }
