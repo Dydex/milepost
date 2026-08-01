@@ -1112,6 +1112,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "milepost-policy-spend"
+version = "0.1.0"
+dependencies = [
+ "smart-wallet-interface",
+ "soroban-sdk",
+]
+
+[[package]]
 name = "milepost-program"
 version = "0.1.0"
 dependencies = [
@@ -1551,6 +1559,14 @@ name = "smallvec"
 version = "1.15.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8ed6a63f02c8539c91a8685a86f4099661ba3da017932f6ebbea6de3f0fa7c90"
+
+[[package]]
+name = "smart-wallet-interface"
+version = "1.0.0"
+source = "git+https://github.com/stellar/passkey-kit?rev=9a8c9ffc7dd7669ab86378167d698e53dda82174#9a8c9ffc7dd7669ab86378167d698e53dda82174"
+dependencies = [
+ "soroban-sdk",
+]
 
 [[package]]
 name = "soroban-builtin-sdk-macros"

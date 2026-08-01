@@ -51,8 +51,8 @@ a *recipient*, and what that means is set per programme:
 | `record` | Portable, non-transferable recipient standing. | Built |
 | `registry` | Factory and protocol configuration. | Built |
 | `program` | A funding programme: contributions, applications, review, partial awards. | Built |
-| `treasury` | Multisig over protocol fees. | Phase 4 |
-| `policy_spend` | Policy signer restricting a smart wallet to verified payees. | Phase 4 |
+| `policy_spend` | Policy signer restricting a smart wallet to verified payees. | Built |
+| `treasury` | Multisig over protocol fees. | Planned |
 
 `attest`, `record` and `policy_spend` are deliberately free of any dependency on
 the rest of the protocol, and are intended to be useful to other teams on their
@@ -91,20 +91,40 @@ stellar contract build      # optimised wasm
 
 ## Status
 
-The full money path works. Phases 0–3 are done: 100 tests, four contracts
-building to wasm, and an end-to-end route from contribution through application,
-review, partial award, attestation-gated release, fee settlement and refunds.
+Phases 0–4 are done: 121 tests, five contracts building to wasm, and an
+end-to-end route from contribution through application, review, partial award,
+attestation-gated release, fee settlement, refunds and restricted spending.
 
 A tranche releases only when the attestation registry confirms the claim is
 valid, is about this recipient, is under this programme's schema, and really was
 signed by a verifier the programme trusts. One proof unlocks exactly one
 tranche. Whatever is never released — unawarded budget or tranches nobody
 claimed — goes back to contributors proportionally once the release window
-closes, rather than sitting stranded.
+closes, and only genuinely abandoned funds are swept afterwards.
 
-Phase 4 adds the policy signer and passkey onboarding, which turn on `Restricted`
-mode: a tranche paid into the recipient's own wallet that can still only be spent
-with verified payees.
+## TypeScript bindings
+
+`packages/` holds generated clients for each contract, produced by
+`stellar contract bindings typescript` from the built wasm. Regenerate them
+whenever a contract interface changes:
+
+```sh
+stellar contract bindings typescript \
+  --wasm target/wasm32v1-none/release/milepost_program.wasm \
+  --output-dir packages/program --overwrite
+```
+
+They are checked in so a frontend can build against the current interface
+without first building the contracts.
+
+## Not yet done
+
+- **Treasury multisig.** Fees and swept funds currently go to a single address.
+- **Indexer.** Events carry everything needed to reconstruct listings, but
+  nothing consumes them yet.
+- **Restricted mode end to end.** `policy_spend` is built and tested, but
+  wiring a released tranche into a passkey wallet that has the policy installed
+  is not yet exercised as one flow.
 
 ## Licence
 

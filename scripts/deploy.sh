@@ -79,6 +79,11 @@ PROGRAM_WASM="$(stellar contract upload \
   --network "$NETWORK")"
 echo "    programme wasm: $PROGRAM_WASM"
 
+# One policy contract serves every restricted wallet; per-wallet rules live in
+# its storage rather than in a contract per recipient.
+POLICY="$(deploy milepost_policy_spend)"
+echo "    policy:   $POLICY"
+
 REGISTRY="$(deploy milepost_registry \
   --admin "$DEPLOYER" \
   --treasury "$DEPLOYER" \
@@ -98,6 +103,7 @@ cat >"$OUT_FILE" <<EOF
   "attest": "$ATTEST",
   "record": "$RECORD",
   "registry": "$REGISTRY",
+  "policy_spend": "$POLICY",
   "program_wasm": "$PROGRAM_WASM",
   "fee_bps": $FEE_BPS
 }
