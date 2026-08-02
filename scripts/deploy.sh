@@ -26,7 +26,7 @@ mkdir -p "$OUT_DIR"
 
 if ! stellar keys address "$SOURCE" >/dev/null 2>&1; then
   echo "==> Creating and funding key '$SOURCE' on $NETWORK"
-  stellar keys generate --global "$SOURCE" --network "$NETWORK" --fund
+  stellar keys generate "$SOURCE" --network "$NETWORK" --fund
 fi
 
 DEPLOYER="$(stellar keys address "$SOURCE")"
