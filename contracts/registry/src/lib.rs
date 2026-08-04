@@ -72,6 +72,8 @@ pub struct Config {
     pub attest: Address,
     /// Standing contract that programmes credit on release.
     pub record: Address,
+    /// Spend policy programmes consult before paying a `Restricted` tranche.
+    pub policy: Address,
     pub fee_bps: u32,
     /// Hash of the uploaded programme wasm that `create` instantiates.
     pub program_wasm: BytesN<32>,
@@ -114,6 +116,7 @@ impl Registry {
         treasury: Address,
         attest: Address,
         record: Address,
+        policy: Address,
         fee_bps: u32,
         program_wasm: BytesN<32>,
     ) -> Result<(), Error> {
@@ -125,6 +128,7 @@ impl Registry {
             treasury,
             attest,
             record,
+            policy,
             fee_bps,
             program_wasm,
         };
@@ -175,6 +179,7 @@ impl Registry {
                         treasury: config.treasury.clone(),
                         attest: config.attest.clone(),
                         record: config.record.clone(),
+                        policy: config.policy.clone(),
                         schema,
                         fee_bps: config.fee_bps,
                         apply_deadline,
@@ -224,6 +229,13 @@ impl Registry {
         }
         let mut config = Self::admin_config(&env)?;
         config.fee_bps = fee_bps;
+        Self::save(&env, config);
+        Ok(())
+    }
+
+    pub fn set_policy(env: Env, policy: Address) -> Result<(), Error> {
+        let mut config = Self::admin_config(&env)?;
+        config.policy = policy;
         Self::save(&env, config);
         Ok(())
     }

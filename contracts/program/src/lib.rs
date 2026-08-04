@@ -67,6 +67,17 @@ pub trait Attestations {
     ) -> bool;
 }
 
+/// The slice of the spend policy a programme needs.
+///
+/// Only installation is checkable from here. Whether the recipient's *other*
+/// signers are properly limited lives in the wallet's own storage, and no
+/// contract in this protocol can see it — which is exactly why `Allocated`
+/// exists.
+#[contractclient(name = "PolicyClient")]
+pub trait SpendPolicy {
+    fn is_installed(env: Env, wallet: Address) -> bool;
+}
+
 /// The slice of the standing contract a programme needs.
 ///
 /// `credit` returns the updated standing, which this contract has no use for —
@@ -141,19 +152,44 @@ pub enum Error {
     /// The grace period for donors to claim refunds has not elapsed.
     SweepNotOpen = 28,
     NothingToSweep = 29,
+    /// The destination is not a payee this programme has verified.
+    PayeeNotVerified = 30,
+    AlreadyPayee = 31,
+    NotPayee = 32,
+    /// The recipient has no allocation, or not enough of one.
+    InsufficientAllocation = 33,
+    /// A `Restricted` award was released to a wallet with no policy installed.
+    PolicyNotInstalled = 34,
+    /// Allocations can no longer be directed once the sweep window opens.
+    SpendWindowClosed = 35,
 }
 
-/// Where a tranche is paid. Restricted and Open modes arrive with the policy
-/// signer in Phase 4; Direct needs no wallet machinery and carries most of the
-/// accountability on its own.
+/// Where a tranche is paid, in descending order of how hard the restriction is
+/// to circumvent.
 #[contracttype]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Mode {
-    /// Paid straight to a verified payee — a school, clinic or supplier. The
-    /// recipient never holds the funds.
+    /// Paid straight to a verified payee chosen at award time — a school, clinic
+    /// or supplier. The recipient never holds the funds and never chooses.
     Direct = 0,
-    /// Paid to the recipient's wallet, which a policy signer restricts to
-    /// verified destinations.
+    /// Held in escrow and directed by the recipient, who picks which verified
+    /// payee receives it and when.
+    ///
+    /// The strongest guarantee available, because it depends on nothing outside
+    /// this contract. `Restricted` relies on a wallet being configured
+    /// correctly; a misconfigured wallet quietly downgrades to no restriction at
+    /// all. Here there is no wallet to misconfigure — funds cannot reach anyone
+    /// unverified because they never leave escrow until they do.
+    Allocated = 3,
+    /// Paid into the recipient's smart wallet, where a policy signer limits
+    /// onward spending to verified destinations.
+    ///
+    /// Weaker than it looks. A policy constrains one signer, not the wallet: a
+    /// recipient holding an unrestricted admin signer can authorise around it.
+    /// Genuine enforcement needs the wallet's own `SignerLimits` to confine the
+    /// funded signer to the policy, which is a deployment step this contract
+    /// cannot perform. Releases here verify the policy is at least installed,
+    /// which bounds a misconfiguration to one tranche rather than the award.
     Restricted = 1,
     /// Paid to the recipient with no restriction.
     Open = 2,
@@ -253,6 +289,33 @@ pub struct Refunded {
     pub amount: i128,
 }
 
+#[contractevent(topics = ["payee"], data_format = "single-value")]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct PayeeChanged {
+    #[topic]
+    pub payee: Address,
+    pub verified: bool,
+}
+
+#[contractevent(topics = ["allocd"], data_format = "single-value")]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct AllocationChanged {
+    #[topic]
+    pub recipient: Address,
+    pub allocation: i128,
+}
+
+#[contractevent(topics = ["directd"])]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct Directed {
+    #[topic]
+    pub recipient: Address,
+    #[topic]
+    pub payee: Address,
+    pub amount: i128,
+    pub remaining: i128,
+}
+
 #[contractevent(topics = ["swept"], data_format = "single-value")]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct UnclaimedSwept {
@@ -286,6 +349,10 @@ enum Key {
     Voted(Address, Address),
     /// Marks an attestation as spent, so one proof unlocks exactly one tranche.
     Used(BytesN<32>),
+    /// Payees this programme has verified as legitimate destinations.
+    Payee(Address),
+    /// Released funds held in escrow for a recipient to direct.
+    Allocation(Address),
 }
 
 #[contract]
@@ -532,6 +599,12 @@ impl Programme {
             .get((config.quorum - 1) / 2)
             .ok_or(Error::QuorumNotReached)?;
 
+        // A Direct award names its payee now and pays them without further
+        // consent, so the payee has to be one this programme stands behind.
+        if mode == Mode::Direct && !env.storage().persistent().has(&Key::Payee(payee.clone())) {
+            return Err(Error::PayeeNotVerified);
+        }
+
         let granted_so_far: i128 = env.storage().instance().get(&Key::Granted).unwrap_or(0);
         let committed = granted_so_far.checked_add(granted).ok_or(Error::Overflow)?;
         if committed > Self::available(&env, &config)? {
@@ -566,6 +639,102 @@ impl Programme {
         }
         .publish(&env);
         Ok(award)
+    }
+
+    /// Verify a payee as a legitimate destination for this programme's money.
+    ///
+    /// Managed by the creator rather than the reviewers: reviewers judge whether
+    /// an applicant deserves funding, which is a different question from whether
+    /// a given school actually exists.
+    pub fn allow_payee(env: Env, payee: Address) -> Result<(), Error> {
+        Self::config(&env)?.creator.require_auth();
+
+        let key = Key::Payee(payee.clone());
+        if env.storage().persistent().has(&key) {
+            return Err(Error::AlreadyPayee);
+        }
+        env.storage().persistent().set(&key, &true);
+        env.storage()
+            .persistent()
+            .extend_ttl(&key, BUMP_THRESHOLD, BUMP_LEDGERS);
+
+        PayeeChanged {
+            payee,
+            verified: true,
+        }
+        .publish(&env);
+        Ok(())
+    }
+
+    /// Withdraw a payee. Allocations already directed to them are untouched —
+    /// this stops future payments, it does not claw back past ones.
+    pub fn deny_payee(env: Env, payee: Address) -> Result<(), Error> {
+        Self::config(&env)?.creator.require_auth();
+
+        let key = Key::Payee(payee.clone());
+        if !env.storage().persistent().has(&key) {
+            return Err(Error::NotPayee);
+        }
+        env.storage().persistent().remove(&key);
+
+        PayeeChanged {
+            payee,
+            verified: false,
+        }
+        .publish(&env);
+        Ok(())
+    }
+
+    /// Direct part of an allocation to a verified payee.
+    ///
+    /// This is what gives an `Allocated` recipient agency: they choose which
+    /// payee, when, and how much, without ever holding funds that could reach
+    /// anywhere else. The money moves from escrow straight to the payee.
+    pub fn spend(
+        env: Env,
+        recipient: Address,
+        payee: Address,
+        amount: i128,
+    ) -> Result<i128, Error> {
+        recipient.require_auth();
+        let config = Self::config(&env)?;
+
+        if env.ledger().timestamp() >= config.sweep_deadline {
+            return Err(Error::SpendWindowClosed);
+        }
+        if amount <= 0 {
+            return Err(Error::InvalidAmount);
+        }
+        if !env.storage().persistent().has(&Key::Payee(payee.clone())) {
+            return Err(Error::PayeeNotVerified);
+        }
+
+        let key = Key::Allocation(recipient.clone());
+        let allocation: i128 = env.storage().persistent().get(&key).unwrap_or(0);
+        if allocation < amount {
+            return Err(Error::InsufficientAllocation);
+        }
+
+        let remaining = allocation - amount;
+        env.storage().persistent().set(&key, &remaining);
+        env.storage()
+            .persistent()
+            .extend_ttl(&key, BUMP_THRESHOLD, BUMP_LEDGERS);
+
+        token::Client::new(&env, &config.token).transfer(
+            &env.current_contract_address(),
+            &payee,
+            &amount,
+        );
+
+        Directed {
+            recipient,
+            payee,
+            amount,
+            remaining,
+        }
+        .publish(&env);
+        Ok(remaining)
     }
 
     /// Release one tranche against a proof that the condition was met.
@@ -652,14 +821,42 @@ impl Programme {
             &released.checked_add(amount).ok_or(Error::Overflow)?,
         );
 
-        token::Client::new(&env, &config.token).transfer(
-            &env.current_contract_address(),
-            &award.payee,
-            &amount,
-        );
+        match award.mode {
+            // Stays in escrow for the recipient to direct via `spend`.
+            Mode::Allocated => {
+                let key = Key::Allocation(recipient.clone());
+                let allocation: i128 = env.storage().persistent().get(&key).unwrap_or(0);
+                let allocation = allocation.checked_add(amount).ok_or(Error::Overflow)?;
+                env.storage().persistent().set(&key, &allocation);
+                env.storage()
+                    .persistent()
+                    .extend_ttl(&key, BUMP_THRESHOLD, BUMP_LEDGERS);
 
-        // Credit standing last: the recipient's track record should describe
-        // money that actually moved.
+                AllocationChanged {
+                    recipient: recipient.clone(),
+                    allocation,
+                }
+                .publish(&env);
+            }
+            mode => {
+                // A `Restricted` award paid into a wallet with no policy
+                // installed is an unrestricted payment wearing the wrong label.
+                // Checking per tranche bounds a misconfiguration to one release.
+                if mode == Mode::Restricted
+                    && !PolicyClient::new(&env, &config.policy).is_installed(&award.payee)
+                {
+                    return Err(Error::PolicyNotInstalled);
+                }
+                token::Client::new(&env, &config.token).transfer(
+                    &env.current_contract_address(),
+                    &award.payee,
+                    &amount,
+                );
+            }
+        }
+
+        // Credit standing last: the attestation is the proof the milestone was
+        // met, and that is what a track record should describe.
         StandingClient::new(&env, &config.record).credit(
             &env.current_contract_address(),
             &recipient,
@@ -897,6 +1094,18 @@ impl Programme {
 
     pub fn total_released(env: Env) -> i128 {
         env.storage().instance().get(&Key::Released).unwrap_or(0)
+    }
+
+    /// Escrowed funds this recipient may still direct.
+    pub fn allocation_of(env: Env, recipient: Address) -> i128 {
+        env.storage()
+            .persistent()
+            .get(&Key::Allocation(recipient))
+            .unwrap_or(0)
+    }
+
+    pub fn is_payee(env: Env, payee: Address) -> bool {
+        env.storage().persistent().has(&Key::Payee(payee))
     }
 
     pub fn is_verifier(env: Env, addr: Address) -> bool {

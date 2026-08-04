@@ -43,10 +43,13 @@ const DAY_IN_LEDGERS: u32 = 17_280;
 const BUMP_LEDGERS: u32 = 90 * DAY_IN_LEDGERS;
 const BUMP_THRESHOLD: u32 = 60 * DAY_IN_LEDGERS;
 
+/// Named `SpendError` rather than `Error` on purpose: the smart wallet
+/// interface exports its own `Error`, and two spec entries under one name make
+/// the contract's generated bindings ambiguous about which is which.
 #[contracterror]
 #[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd, Ord)]
 #[repr(u32)]
-pub enum Error {
+pub enum SpendError {
     NotConfigured = 1,
     AlreadyConfigured = 2,
     NotSteward = 3,
@@ -139,17 +142,17 @@ impl PolicySpend {
         token: Address,
         cap: i128,
         period: u64,
-    ) -> Result<(), Error> {
+    ) -> Result<(), SpendError> {
         steward.require_auth();
         if cap <= 0 || period == 0 {
-            return Err(Error::InvalidCap);
+            return Err(SpendError::InvalidCap);
         }
 
         let key = Key::Policy(wallet.clone());
         match env.storage().persistent().get::<_, Policy>(&key) {
             Some(existing) => {
                 if existing.steward != steward {
-                    return Err(Error::NotSteward);
+                    return Err(SpendError::NotSteward);
                 }
             }
             None => wallet.require_auth(),
@@ -177,12 +180,12 @@ impl PolicySpend {
         steward: Address,
         wallet: Address,
         payee: Address,
-    ) -> Result<(), Error> {
+    ) -> Result<(), SpendError> {
         Self::require_steward(&env, &steward, &wallet)?;
 
         let key = Key::Payee(wallet.clone(), payee.clone());
         if env.storage().persistent().has(&key) {
-            return Err(Error::AlreadyPayee);
+            return Err(SpendError::AlreadyPayee);
         }
         env.storage().persistent().set(&key, &true);
         env.storage()
@@ -203,12 +206,12 @@ impl PolicySpend {
         steward: Address,
         wallet: Address,
         payee: Address,
-    ) -> Result<(), Error> {
+    ) -> Result<(), SpendError> {
         Self::require_steward(&env, &steward, &wallet)?;
 
         let key = Key::Payee(wallet.clone(), payee.clone());
         if !env.storage().persistent().has(&key) {
-            return Err(Error::NotPayee);
+            return Err(SpendError::NotPayee);
         }
         env.storage().persistent().remove(&key);
 
@@ -221,11 +224,11 @@ impl PolicySpend {
         Ok(())
     }
 
-    pub fn get_policy(env: Env, wallet: Address) -> Result<Policy, Error> {
+    pub fn get_policy(env: Env, wallet: Address) -> Result<Policy, SpendError> {
         env.storage()
             .persistent()
             .get(&Key::Policy(wallet))
-            .ok_or(Error::NotConfigured)
+            .ok_or(SpendError::NotConfigured)
     }
 
     pub fn is_payee(env: Env, wallet: Address, payee: Address) -> bool {
@@ -237,7 +240,7 @@ impl PolicySpend {
     }
 
     /// How much this wallet may still spend in the current window.
-    pub fn remaining(env: Env, wallet: Address) -> Result<i128, Error> {
+    pub fn remaining(env: Env, wallet: Address) -> Result<i128, SpendError> {
         let policy = Self::get_policy(env.clone(), wallet)?;
         Ok(if Self::window_elapsed(&env, &policy) {
             policy.cap
@@ -246,15 +249,15 @@ impl PolicySpend {
         })
     }
 
-    fn require_steward(env: &Env, steward: &Address, wallet: &Address) -> Result<(), Error> {
+    fn require_steward(env: &Env, steward: &Address, wallet: &Address) -> Result<(), SpendError> {
         steward.require_auth();
         let policy: Policy = env
             .storage()
             .persistent()
             .get(&Key::Policy(wallet.clone()))
-            .ok_or(Error::NotConfigured)?;
+            .ok_or(SpendError::NotConfigured)?;
         if &policy.steward != steward {
-            return Err(Error::NotSteward);
+            return Err(SpendError::NotSteward);
         }
         Ok(())
     }
@@ -277,7 +280,7 @@ impl PolicyInterface for PolicySpend {
         let key = Key::Policy(source.clone());
         let mut policy: Policy = match env.storage().persistent().get(&key) {
             Some(p) => p,
-            None => panic_with_error!(&env, Error::NotConfigured),
+            None => panic_with_error!(&env, SpendError::NotConfigured),
         };
 
         // A lapsed window resets the allowance before anything is counted
@@ -297,12 +300,12 @@ impl PolicyInterface for PolicySpend {
                 // Creating a contract is not spending, but it is also not
                 // something a grant-funded signer has any business doing.
                 Context::CreateContractHostFn(_) | Context::CreateContractWithCtorHostFn(_) => {
-                    panic_with_error!(&env, Error::ForbiddenCall)
+                    panic_with_error!(&env, SpendError::ForbiddenCall)
                 }
             };
 
             if contract != policy.token || fn_name != Symbol::new(&env, "transfer") {
-                panic_with_error!(&env, Error::ForbiddenCall);
+                panic_with_error!(&env, SpendError::ForbiddenCall);
             }
 
             // `transfer(from, to, amount)`.
@@ -311,22 +314,22 @@ impl PolicyInterface for PolicySpend {
             let amount: i128 = args.get(2).unwrap().try_into_val(&env).unwrap();
 
             if from != source {
-                panic_with_error!(&env, Error::ForbiddenTransfer);
+                panic_with_error!(&env, SpendError::ForbiddenTransfer);
             }
             if amount <= 0 {
-                panic_with_error!(&env, Error::InvalidAmount);
+                panic_with_error!(&env, SpendError::InvalidAmount);
             }
             if !env
                 .storage()
                 .persistent()
                 .has(&Key::Payee(source.clone(), to.clone()))
             {
-                panic_with_error!(&env, Error::PayeeNotAllowed);
+                panic_with_error!(&env, SpendError::PayeeNotAllowed);
             }
 
             policy.spent += amount;
             if policy.spent > policy.cap {
-                panic_with_error!(&env, Error::CapExceeded);
+                panic_with_error!(&env, SpendError::CapExceeded);
             }
 
             Spent {

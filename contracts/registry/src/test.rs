@@ -32,6 +32,7 @@ fn setup() -> Fixture {
     let admin = Address::generate(&env);
     let treasury = Address::generate(&env);
     let attest = Address::generate(&env);
+    let policy = Address::generate(&env);
 
     // `record` is deployed with the deployer as admin, then handed to the
     // registry — the registry's address does not exist until it is deployed.
@@ -46,6 +47,7 @@ fn setup() -> Fixture {
             treasury.clone(),
             attest,
             record_id,
+            policy,
             FEE_BPS,
             wasm,
         ),
@@ -106,6 +108,7 @@ fn a_fee_above_the_ceiling_is_rejected_at_construction() {
     env.register(
         Registry,
         (
+            Address::generate(&env),
             Address::generate(&env),
             Address::generate(&env),
             Address::generate(&env),

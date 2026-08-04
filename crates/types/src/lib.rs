@@ -58,6 +58,9 @@ pub struct ProgrammeConfig {
     pub attest: Address,
     /// Standing contract credited on each release.
     pub record: Address,
+    /// Policy signer contract, consulted before a `Restricted` tranche is paid
+    /// into a recipient's wallet.
+    pub policy: Address,
     /// The single schema whose attestations unlock this programme's tranches.
     pub schema: BytesN<32>,
     pub fee_bps: u32,

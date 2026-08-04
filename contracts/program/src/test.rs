@@ -7,6 +7,32 @@ use soroban_sdk::{
     vec, Env, String,
 };
 
+/// A stand-in for the spend policy. The programme only asks whether a policy is
+/// installed for a wallet, so the test double implements exactly that.
+mod policy {
+    use soroban_sdk::{contract, contractimpl, contracttype, Address, Env};
+
+    #[contracttype]
+    pub enum Key {
+        Installed(Address),
+    }
+
+    #[contract]
+    pub struct FakePolicy;
+
+    #[contractimpl]
+    impl FakePolicy {
+        pub fn install(env: Env, wallet: Address) {
+            env.storage()
+                .persistent()
+                .set(&Key::Installed(wallet), &true);
+        }
+        pub fn is_installed(env: Env, wallet: Address) -> bool {
+            env.storage().persistent().has(&Key::Installed(wallet))
+        }
+    }
+}
+
 const APPLY_DEADLINE: u64 = 10_000;
 const REVIEW_DEADLINE: u64 = 20_000;
 const RELEASE_DEADLINE: u64 = 30_000;
@@ -19,6 +45,7 @@ struct Fixture {
     token: TokenClient<'static>,
     mint: StellarAssetClient<'static>,
     attest: milepost_attest::AttestClient<'static>,
+    policy: policy::FakePolicyClient<'static>,
     record: milepost_record::RecordClient<'static>,
     schema: BytesN<32>,
     creator: Address,
@@ -55,6 +82,9 @@ fn setup_with(quorum: u32, reviewer_count: u32, tranches: u32) -> Fixture {
         &true,
     );
 
+    let policy_id = env.register(policy::FakePolicy, ());
+    let policy = policy::FakePolicyClient::new(&env, &policy_id);
+
     let record_id = env.register(milepost_record::Record, (creator.clone(),));
     let record = milepost_record::RecordClient::new(&env, &record_id);
 
@@ -72,6 +102,7 @@ fn setup_with(quorum: u32, reviewer_count: u32, tranches: u32) -> Fixture {
                 treasury: treasury.clone(),
                 attest: attest_id,
                 record: record_id,
+                policy: policy_id,
                 schema: schema.clone(),
                 fee_bps: FEE_BPS,
                 apply_deadline: APPLY_DEADLINE,
@@ -96,6 +127,7 @@ fn setup_with(quorum: u32, reviewer_count: u32, tranches: u32) -> Fixture {
         token,
         mint,
         attest,
+        policy,
         record,
         schema,
         creator,
@@ -188,6 +220,7 @@ fn construct_with(quorum: u32, reviewer_count: u32, apply: u64, review: u64, fee
                 treasury: Address::generate(&env),
                 attest: Address::generate(&env),
                 record: Address::generate(&env),
+                policy: Address::generate(&env),
                 schema: BytesN::from_array(&env, &[1u8; 32]),
                 fee_bps,
                 apply_deadline: apply,
@@ -404,8 +437,9 @@ fn awarded(f: &Fixture, applicant: &Address, requested: i128, votes: &[i128]) ->
         f.client
             .review(&f.reviewers.get(i as u32).unwrap(), applicant, v);
     }
-    f.client
-        .finalize(applicant, &Address::generate(&f.env), &Mode::Direct)
+    let payee = Address::generate(&f.env);
+    f.client.allow_payee(&payee);
+    f.client.finalize(applicant, &payee, &Mode::Direct)
 }
 
 #[test]
@@ -463,6 +497,7 @@ fn different_applicants_get_different_amounts() {
     }
 
     let payee = Address::generate(&f.env);
+    f.client.allow_payee(&payee);
     let a = f.client.finalize(&small, &payee, &Mode::Direct);
     let b = f.client.finalize(&large, &payee, &Mode::Direct);
     assert_eq!(a.granted, 200);
@@ -495,9 +530,10 @@ fn finalize_is_idempotent_by_rejection() {
     let f = setup(2, 3);
     let applicant = Address::generate(&f.env);
     awarded(&f, &applicant, 1_000, &[1_000, 1_000]);
+    let payee = Address::generate(&f.env);
+    f.client.allow_payee(&payee);
     assert_eq!(
-        f.client
-            .try_finalize(&applicant, &Address::generate(&f.env), &Mode::Direct),
+        f.client.try_finalize(&applicant, &payee, &Mode::Direct),
         Err(Ok(Error::AlreadyFinalized))
     );
 }
@@ -520,6 +556,7 @@ fn awards_cannot_exceed_the_budget() {
     }
 
     let payee = Address::generate(&f.env);
+    f.client.allow_payee(&payee);
     assert_eq!(f.client.finalize(&a, &payee, &Mode::Direct).granted, 800);
     // 800 + 800 > 900: the second is refused rather than over-committing.
     assert_eq!(
@@ -543,6 +580,7 @@ fn finalize_carries_the_payee_and_mode() {
     }
 
     let school = Address::generate(&f.env);
+    f.client.allow_payee(&school);
     let award = f.client.finalize(&applicant, &school, &Mode::Direct);
 
     assert_eq!(
@@ -572,10 +610,10 @@ fn finalize_still_works_after_the_review_deadline() {
 
     f.env.ledger().set_timestamp(REVIEW_DEADLINE + 1);
     assert_eq!(f.client.get_phase(), Phase::Settled);
+    let payee = Address::generate(&f.env);
+    f.client.allow_payee(&payee);
     assert_eq!(
-        f.client
-            .finalize(&applicant, &Address::generate(&f.env), &Mode::Direct)
-            .granted,
+        f.client.finalize(&applicant, &payee, &Mode::Direct).granted,
         1_000
     );
 }
@@ -638,6 +676,7 @@ fn award_to(f: &Fixture, recipient: &Address, payee: &Address, granted: &i128) {
         f.client
             .review(&f.reviewers.get(i).unwrap(), recipient, granted);
     }
+    f.client.allow_payee(payee);
     f.client.finalize(recipient, payee, &Mode::Direct);
 }
 
@@ -889,6 +928,7 @@ fn tranches_never_released_go_back_to_donors() {
         f.client
             .review(&f.reviewers.get(i).unwrap(), &recipient, &900);
     }
+    f.client.allow_payee(&school);
     f.client.finalize(&recipient, &school, &Mode::Direct);
 
     // Only one of three tranches is ever claimed.
@@ -1036,4 +1076,241 @@ fn a_sweep_deadline_before_the_release_deadline_is_rejected() {
         c.sweep_deadline > c.release_deadline,
         "donors must get a grace period after releases end"
     );
+}
+
+// ---- allocated mode ----
+
+/// Award `granted` in `Allocated` mode and release the first tranche, so the
+/// recipient has escrow to direct.
+fn allocated_to(f: &Fixture, recipient: &Address, granted: &i128) -> i128 {
+    let donor = funded_donor(f, 100_000);
+    f.client.contribute(&donor, &100_000);
+    f.client.apply(recipient, granted, &hash(&f.env, 1));
+    to_review(f);
+    for i in 0..f.client.get_config().quorum {
+        f.client
+            .review(&f.reviewers.get(i).unwrap(), recipient, granted);
+    }
+    // In Allocated mode the payee is chosen later, by the recipient.
+    f.client.finalize(recipient, recipient, &Mode::Allocated);
+    f.client
+        .release(recipient, &proof(f, recipient, 1), &f.verifier)
+}
+
+#[test]
+fn an_allocated_release_stays_in_escrow() {
+    let f = setup(2, 3);
+    let recipient = Address::generate(&f.env);
+    let amount = allocated_to(&f, &recipient, &900);
+
+    assert_eq!(amount, 300);
+    assert_eq!(f.client.allocation_of(&recipient), 300);
+    assert_eq!(
+        f.token.balance(&recipient),
+        0,
+        "the recipient directs the money without ever holding it"
+    );
+    assert_eq!(f.token.balance(&f.client.address), 100_000);
+}
+
+#[test]
+fn a_recipient_directs_their_allocation_to_a_verified_payee() {
+    let f = setup(2, 3);
+    let recipient = Address::generate(&f.env);
+    allocated_to(&f, &recipient, &900);
+
+    let school = Address::generate(&f.env);
+    f.client.allow_payee(&school);
+
+    let remaining = f.client.spend(&recipient, &school, &200);
+    assert_eq!(remaining, 100);
+    assert_eq!(f.token.balance(&school), 200);
+    assert_eq!(f.client.allocation_of(&recipient), 100);
+}
+
+#[test]
+fn a_recipient_chooses_between_verified_payees() {
+    // The agency that Direct mode denies them: same money, their choice.
+    let f = setup(2, 3);
+    let recipient = Address::generate(&f.env);
+    allocated_to(&f, &recipient, &900);
+
+    let bookshop = Address::generate(&f.env);
+    let landlord = Address::generate(&f.env);
+    f.client.allow_payee(&bookshop);
+    f.client.allow_payee(&landlord);
+
+    f.client.spend(&recipient, &bookshop, &120);
+    f.client.spend(&recipient, &landlord, &180);
+
+    assert_eq!(f.token.balance(&bookshop), 120);
+    assert_eq!(f.token.balance(&landlord), 180);
+    assert_eq!(f.client.allocation_of(&recipient), 0);
+}
+
+#[test]
+fn an_allocation_cannot_reach_anyone_unverified() {
+    // The guarantee Restricted mode cannot make: there is no wallet to
+    // misconfigure, so the money simply has nowhere else to go.
+    let f = setup(2, 3);
+    let recipient = Address::generate(&f.env);
+    allocated_to(&f, &recipient, &900);
+
+    let casino = Address::generate(&f.env);
+    assert_eq!(
+        f.client.try_spend(&recipient, &casino, &100),
+        Err(Ok(Error::PayeeNotVerified))
+    );
+    assert_eq!(f.client.allocation_of(&recipient), 300);
+    assert_eq!(f.token.balance(&casino), 0);
+}
+
+#[test]
+fn a_recipient_cannot_pay_themselves() {
+    let f = setup(2, 3);
+    let recipient = Address::generate(&f.env);
+    allocated_to(&f, &recipient, &900);
+
+    assert_eq!(
+        f.client.try_spend(&recipient, &recipient, &100),
+        Err(Ok(Error::PayeeNotVerified))
+    );
+}
+
+#[test]
+fn spending_beyond_the_allocation_is_rejected() {
+    let f = setup(2, 3);
+    let recipient = Address::generate(&f.env);
+    allocated_to(&f, &recipient, &900);
+
+    let school = Address::generate(&f.env);
+    f.client.allow_payee(&school);
+    assert_eq!(
+        f.client.try_spend(&recipient, &school, &301),
+        Err(Ok(Error::InsufficientAllocation))
+    );
+}
+
+#[test]
+fn allocations_do_not_leak_between_recipients() {
+    let f = setup(2, 3);
+    let a = Address::generate(&f.env);
+    let b = Address::generate(&f.env);
+    allocated_to(&f, &a, &900);
+
+    let school = Address::generate(&f.env);
+    f.client.allow_payee(&school);
+    assert_eq!(
+        f.client.try_spend(&b, &school, &100),
+        Err(Ok(Error::InsufficientAllocation))
+    );
+}
+
+#[test]
+fn denying_a_payee_stops_future_spending() {
+    let f = setup(2, 3);
+    let recipient = Address::generate(&f.env);
+    allocated_to(&f, &recipient, &900);
+
+    let school = Address::generate(&f.env);
+    f.client.allow_payee(&school);
+    f.client.spend(&recipient, &school, &100);
+
+    f.client.deny_payee(&school);
+    assert_eq!(
+        f.client.try_spend(&recipient, &school, &100),
+        Err(Ok(Error::PayeeNotVerified))
+    );
+    // Already-directed money is not clawed back.
+    assert_eq!(f.token.balance(&school), 100);
+}
+
+#[test]
+fn allocations_stop_being_directable_once_the_sweep_opens() {
+    let f = setup(2, 3);
+    let recipient = Address::generate(&f.env);
+    allocated_to(&f, &recipient, &900);
+
+    let school = Address::generate(&f.env);
+    f.client.allow_payee(&school);
+
+    f.env.ledger().set_timestamp(SWEEP_DEADLINE);
+    assert_eq!(
+        f.client.try_spend(&recipient, &school, &100),
+        Err(Ok(Error::SpendWindowClosed))
+    );
+}
+
+// ---- restricted mode guards ----
+
+#[test]
+fn a_restricted_release_needs_the_policy_installed() {
+    // A restricted award paid into a wallet with no policy is an unrestricted
+    // payment wearing the wrong label.
+    let f = setup(2, 3);
+    let recipient = Address::generate(&f.env);
+    let wallet = Address::generate(&f.env);
+    let donor = funded_donor(&f, 100_000);
+    f.client.contribute(&donor, &100_000);
+    f.client.apply(&recipient, &900, &hash(&f.env, 1));
+    to_review(&f);
+    for i in 0..2u32 {
+        f.client
+            .review(&f.reviewers.get(i).unwrap(), &recipient, &900);
+    }
+    f.client.finalize(&recipient, &wallet, &Mode::Restricted);
+
+    assert_eq!(
+        f.client
+            .try_release(&recipient, &proof(&f, &recipient, 1), &f.verifier),
+        Err(Ok(Error::PolicyNotInstalled))
+    );
+    assert_eq!(f.token.balance(&wallet), 0);
+
+    // Once installed the same release goes through.
+    f.policy.install(&wallet);
+    assert_eq!(
+        f.client
+            .release(&recipient, &proof(&f, &recipient, 2), &f.verifier),
+        300
+    );
+    assert_eq!(f.token.balance(&wallet), 300);
+}
+
+// ---- payee registry ----
+
+#[test]
+fn a_direct_award_must_name_a_verified_payee() {
+    let f = setup(2, 3);
+    let recipient = Address::generate(&f.env);
+    let donor = funded_donor(&f, 100_000);
+    f.client.contribute(&donor, &100_000);
+    f.client.apply(&recipient, &900, &hash(&f.env, 1));
+    to_review(&f);
+    for i in 0..2u32 {
+        f.client
+            .review(&f.reviewers.get(i).unwrap(), &recipient, &900);
+    }
+
+    let unknown = Address::generate(&f.env);
+    assert_eq!(
+        f.client.try_finalize(&recipient, &unknown, &Mode::Direct),
+        Err(Ok(Error::PayeeNotVerified))
+    );
+}
+
+#[test]
+fn the_payee_registry_rejects_duplicates_and_unknowns() {
+    let f = setup(2, 3);
+    let school = Address::generate(&f.env);
+
+    f.client.allow_payee(&school);
+    assert!(f.client.is_payee(&school));
+    assert_eq!(
+        f.client.try_allow_payee(&school),
+        Err(Ok(Error::AlreadyPayee))
+    );
+
+    f.client.deny_payee(&school);
+    assert_eq!(f.client.try_deny_payee(&school), Err(Ok(Error::NotPayee)));
 }

@@ -71,7 +71,7 @@ fn signer(f: &Fixture) -> SignerKey {
 /// `Err(Ok(..))` the way the other contracts' fallible calls do.
 fn assert_denied<T: core::fmt::Debug>(
     result: Result<T, Result<soroban_sdk::Error, soroban_sdk::InvokeError>>,
-    expected: Error,
+    expected: SpendError,
 ) {
     match result {
         Err(Ok(actual)) => assert_eq!(
@@ -104,7 +104,7 @@ fn a_stranger_cannot_take_over_a_configured_wallet() {
     assert_eq!(
         f.client
             .try_configure(&stranger, &f.wallet, &f.token, &CAP, &PERIOD),
-        Err(Ok(Error::NotSteward))
+        Err(Ok(SpendError::NotSteward))
     );
 }
 
@@ -117,7 +117,7 @@ fn only_the_steward_edits_the_allowlist() {
 
     assert_eq!(
         f.client.try_allow_payee(&f.wallet, &f.wallet, &shop),
-        Err(Ok(Error::NotSteward))
+        Err(Ok(SpendError::NotSteward))
     );
     assert!(!f.client.is_payee(&f.wallet, &shop));
 
@@ -137,7 +137,7 @@ fn a_denied_payee_stops_being_spendable() {
             &signer(&f),
             &transfer_context(&f, &f.wallet, &f.school, 100),
         ),
-        Error::PayeeNotAllowed,
+        SpendError::PayeeNotAllowed,
     );
 }
 
@@ -148,7 +148,7 @@ fn a_zero_cap_is_rejected() {
     assert_eq!(
         f.client
             .try_configure(&f.steward, &other, &f.token, &0, &PERIOD),
-        Err(Ok(Error::InvalidCap))
+        Err(Ok(SpendError::InvalidCap))
     );
 }
 
@@ -177,7 +177,7 @@ fn an_unverified_payee_is_rejected() {
             &signer(&f),
             &transfer_context(&f, &f.wallet, &casino, 100),
         ),
-        Error::PayeeNotAllowed,
+        SpendError::PayeeNotAllowed,
     );
     assert_eq!(f.client.get_policy(&f.wallet).spent, 0);
 }
@@ -203,7 +203,7 @@ fn a_different_asset_is_rejected() {
     ];
     assert_denied(
         f.client.try_policy__(&f.wallet, &signer(&f), &contexts),
-        Error::ForbiddenCall,
+        SpendError::ForbiddenCall,
     );
 }
 
@@ -227,7 +227,7 @@ fn a_non_transfer_call_is_rejected() {
     ];
     assert_denied(
         f.client.try_policy__(&f.wallet, &signer(&f), &contexts),
-        Error::ForbiddenCall,
+        SpendError::ForbiddenCall,
     );
 }
 
@@ -241,7 +241,7 @@ fn moving_someone_elses_funds_is_rejected() {
             &signer(&f),
             &transfer_context(&f, &victim, &f.school, 100),
         ),
-        Error::ForbiddenTransfer,
+        SpendError::ForbiddenTransfer,
     );
 }
 
@@ -266,7 +266,7 @@ fn the_cap_is_enforced_cumulatively() {
             &signer(&f),
             &transfer_context(&f, &f.wallet, &f.school, 1),
         ),
-        Error::CapExceeded,
+        SpendError::CapExceeded,
     );
 }
 
@@ -300,7 +300,7 @@ fn every_context_in_a_transaction_is_checked() {
     ];
     assert_denied(
         f.client.try_policy__(&f.wallet, &signer(&f), &contexts),
-        Error::PayeeNotAllowed,
+        SpendError::PayeeNotAllowed,
     );
     assert_eq!(
         f.client.get_policy(&f.wallet).spent,
@@ -339,7 +339,7 @@ fn an_unconfigured_wallet_authorises_nothing() {
             &signer(&f),
             &transfer_context(&f, &stranger, &f.school, 1),
         ),
-        Error::NotConfigured,
+        SpendError::NotConfigured,
     );
 }
 
@@ -379,6 +379,6 @@ fn uninstalling_does_not_reset_the_spend_window() {
             &signer(&f),
             &transfer_context(&f, &f.wallet, &f.school, 1),
         ),
-        Error::CapExceeded,
+        SpendError::CapExceeded,
     );
 }
