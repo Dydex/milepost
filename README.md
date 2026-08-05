@@ -102,6 +102,20 @@ tranche. Whatever is never released — unawarded budget or tranches nobody
 claimed — goes back to contributors proportionally once the release window
 closes, and only genuinely abandoned funds are swept afterwards.
 
+## Deployed (testnet)
+
+| Contract | Id |
+| --- | --- |
+| `attest` | `CCL5WBJZK225GAB7YTFNQIFQ62CK5BWDE5SZPDX4KWNJLSUNAUIJVMMG` |
+| `record` | `CDQKT2ENYZ5MK7VGQ4QAFQMV7XQ4ICDLY6IB6WBWYPWL6KGFU42D3U5B` |
+| `policy_spend` | `CCTOHUSJDJPRWSJ3LJICLQB7PKYERNHZ2WSRHKN6IBTNBSF6HFA2DOWR` |
+| `registry` | `CAO72MYVQ2BUI3VUN3MQVGLRQT4ARBIJELJRVJH2F3BDMRMMJYRDYNP6` |
+
+Programmes are instantiated from wasm hash
+`dfd9df3ee8a30c2f5f6e4eae498802431c732df9886b2325dd54bc922c64cc8e`, so each one
+gets its own address and isolated state. Re-running `./scripts/deploy.sh
+testnet` deploys a fresh set rather than upgrading these.
+
 ## TypeScript bindings
 
 `packages/` holds generated clients for each contract, produced by
