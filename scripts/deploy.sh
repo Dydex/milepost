@@ -42,11 +42,20 @@ deploy() {
   local wasm="$WASM_DIR/$name.wasm"
   [[ -f "$wasm" ]] || { echo "missing build artifact: $wasm" >&2; exit 1; }
   echo "==> Deploying $name ($(stat -c%s "$wasm") bytes)" >&2
-  stellar contract deploy \
-    --wasm "$wasm" \
-    --source-account "$SOURCE" \
-    --network "$NETWORK" \
-    "$@"
+  # Constructor arguments go after `--`, so they are not mistaken for flags of
+  # the deploy command itself.
+  if [[ $# -gt 0 ]]; then
+    stellar contract deploy \
+      --wasm "$wasm" \
+      --source-account "$SOURCE" \
+      --network "$NETWORK" \
+      -- "$@"
+  else
+    stellar contract deploy \
+      --wasm "$wasm" \
+      --source-account "$SOURCE" \
+      --network "$NETWORK"
+  fi
 }
 
 invoke() {
@@ -89,6 +98,7 @@ REGISTRY="$(deploy milepost_registry \
   --treasury "$DEPLOYER" \
   --attest "$ATTEST" \
   --record "$RECORD" \
+  --policy "$POLICY" \
   --fee_bps "$FEE_BPS" \
   --program_wasm "$PROGRAM_WASM")"
 echo "    registry: $REGISTRY"
