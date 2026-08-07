@@ -78,6 +78,25 @@ exactly the kind of thing that turns a `0`-means-absent convention into a bug.
 payload itself lives wherever the parties agree. Creating a programme must never
 fail because an IPFS gateway is down.
 
+## Working in this repo
+
+Contracts and the web app share one repository, and more than one person works
+in it at a time. Two conventions keep that from costing anything:
+
+**Paths have owners.** `contracts/`, `crates/` and `scripts/` are the protocol;
+`frontend/` is the web app. `packages/` and `deployments/` are generated — the
+protocol writes them, the web app reads them, nobody edits them by hand.
+
+**No history rewrites on `main`.** Rebasing, resetting or cherry-picking a
+shared branch silently drops commits that were not part of the rewrite. That has
+already cost one contract commit here, recovered from the reflog. Merge forward;
+do not rewrite behind.
+
+**Re-sync after a contract change.** Bindings in `packages/` encode the contract
+interface at the moment they were generated. A stale binding fails at runtime
+with a decode error rather than at build time, so regenerate them whenever a
+contract interface moves.
+
 ## Development
 
 Requires Rust stable with the `wasm32v1-none` target and `stellar` CLI 27.x.
@@ -115,6 +134,32 @@ Programmes are instantiated from wasm hash
 `dfd9df3ee8a30c2f5f6e4eae498802431c732df9886b2325dd54bc922c64cc8e`, so each one
 gets its own address and isolated state. Re-running `./scripts/deploy.sh
 testnet` deploys a fresh set rather than upgrading these.
+
+## Seeding a scenario
+
+`scripts/seed.sh` drives a real scenario against a deployed set, so there is
+something to look at other than empty state:
+
+```sh
+./scripts/deploy.sh testnet    # contracts
+./scripts/seed.sh testnet      # programme, funding, two applications
+./scripts/seed-review.sh testnet   # once the application window closes
+```
+
+It runs in two halves because the programme's phases are driven by wall-clock
+deadlines, and the review stage genuinely cannot happen until applications
+close. The scenario is chosen to exercise the cases that matter:
+
+- **Two applicants asking for very different amounts** — 500 and 80. An equal
+  split would serve neither.
+- **Reviewers who disagree** — 300 / 100 / 500 for the same applicant, settling
+  at the median rather than being dragged to either extreme.
+- **Both restriction models** — one award `Allocated` so the recipient directs
+  it to a verified school, one `Direct` straight to the institution.
+- **A real attestation** under a restricted schema, so only the clinic can make
+  the claim that unlocks a tranche.
+
+Ids and accounts land in `deployments/<network>.seed.json`.
 
 ## TypeScript bindings
 
