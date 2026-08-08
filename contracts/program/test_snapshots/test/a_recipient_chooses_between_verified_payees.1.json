@@ -1086,7 +1086,11 @@
                       "symbol": "mode"
                     },
                     "val": {
-                      "u32": 3
+                      "vec": [
+                        {
+                          "symbol": "Allocated"
+                        }
+                      ]
                     }
                   },
                   {

@@ -166,12 +166,17 @@ pub enum Error {
 
 /// Where a tranche is paid, in descending order of how hard the restriction is
 /// to circumvent.
+///
+/// Variants carry no explicit discriminants on purpose: an enum with them is
+/// encoded numerically, so callers and generated bindings must pass `3` rather
+/// than `"Allocated"`. Symbolic variants cost a few bytes per award and save
+/// every caller from a lookup table.
 #[contracttype]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Mode {
     /// Paid straight to a verified payee chosen at award time — a school, clinic
     /// or supplier. The recipient never holds the funds and never chooses.
-    Direct = 0,
+    Direct,
     /// Held in escrow and directed by the recipient, who picks which verified
     /// payee receives it and when.
     ///
@@ -180,7 +185,7 @@ pub enum Mode {
     /// correctly; a misconfigured wallet quietly downgrades to no restriction at
     /// all. Here there is no wallet to misconfigure — funds cannot reach anyone
     /// unverified because they never leave escrow until they do.
-    Allocated = 3,
+    Allocated,
     /// Paid into the recipient's smart wallet, where a policy signer limits
     /// onward spending to verified destinations.
     ///
@@ -190,9 +195,9 @@ pub enum Mode {
     /// funded signer to the policy, which is a deployment step this contract
     /// cannot perform. Releases here verify the policy is at least installed,
     /// which bounds a misconfiguration to one tranche rather than the award.
-    Restricted = 1,
+    Restricted,
     /// Paid to the recipient with no restriction.
-    Open = 2,
+    Open,
 }
 
 #[contracttype]

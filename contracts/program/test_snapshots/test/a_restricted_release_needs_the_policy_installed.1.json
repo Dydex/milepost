@@ -1095,7 +1095,11 @@
                       "symbol": "mode"
                     },
                     "val": {
-                      "u32": 1
+                      "vec": [
+                        {
+                          "symbol": "Restricted"
+                        }
+                      ]
                     }
                   },
                   {

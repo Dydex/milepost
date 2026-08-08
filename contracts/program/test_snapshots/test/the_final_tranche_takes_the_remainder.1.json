@@ -1244,7 +1244,11 @@
                       "symbol": "mode"
                     },
                     "val": {
-                      "u32": 0
+                      "vec": [
+                        {
+                          "symbol": "Direct"
+                        }
+                      ]
                     }
                   },
                   {
