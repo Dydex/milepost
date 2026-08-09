@@ -14,12 +14,23 @@ SEED="$ROOT/deployments/$NETWORK.seed.json"
 
 [[ -f "$SEED" ]] || { echo "run ./scripts/seed.sh first" >&2; exit 1; }
 
-read_json() { python3 -c "import json;d=json.load(open('$SEED'));print(eval('d$1'))"; }
-PROGRAMME="$(read_json "['programme']")"
-ATTEST="$(read_json "['attest']")"
-RECORD="$(read_json "['record']")"
-SCHEMA="$(read_json "['schema']")"
-APPLY_DEADLINE="$(read_json "['deadlines']['apply']")"
+# Walks nested keys without building a Python expression out of shell strings,
+# which is how the first version of this managed to break on its own quoting.
+read_json() {
+  python3 - "$SEED" "$@" <<'PYEOF'
+import json, sys
+value = json.load(open(sys.argv[1]))
+for key in sys.argv[2:]:
+    value = value[key]
+print(value)
+PYEOF
+}
+
+PROGRAMME="$(read_json programme)"
+ATTEST="$(read_json attest)"
+RECORD="$(read_json record)"
+SCHEMA="$(read_json schema)"
+APPLY_DEADLINE="$(read_json deadlines apply)"
 
 NOW="$(date +%s)"
 if (( NOW < APPLY_DEADLINE )); then
@@ -54,11 +65,11 @@ echo "    kofi: unanimous at 80"
 
 echo "==> Settling awards"
 ADA_AWARD="$(invoke "$PROGRAMME" creator finalize \
-  --applicant "$(addr student-ada)" --payee "$(addr student-ada)" --mode Allocated)"
+  --applicant "$(addr student-ada)" --payee "$(addr student-ada)" --mode '"Allocated"')"
 echo "    ada  (Allocated): $(python3 -c "import json,sys;print(json.loads('''$ADA_AWARD''')['granted'])" 2>/dev/null || echo "$ADA_AWARD")"
 
 KOFI_AWARD="$(invoke "$PROGRAMME" creator finalize \
-  --applicant "$(addr student-kofi)" --payee "$(addr school)" --mode Direct)"
+  --applicant "$(addr student-kofi)" --payee "$(addr school)" --mode '"Direct"')"
 echo "    kofi (Direct):    $(python3 -c "import json,sys;print(json.loads('''$KOFI_AWARD''')['granted'])" 2>/dev/null || echo "$KOFI_AWARD")"
 
 echo "==> Clinic attests Ada met her first milestone"
