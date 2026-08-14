@@ -1,8 +1,34 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import './FunderDashboard.css';
-import { TrendingUp, Users, CheckCircle } from 'lucide-react';
+import { TrendingUp, Users, CheckCircle, Activity } from 'lucide-react';
+import { useSoroban } from '../context/SorobanContext';
 
 export const FunderDashboard: React.FC = () => {
+  const { programme, formatAmount } = useSoroban();
+  const [budget, setBudget] = useState<bigint | null>(null);
+  const [totalContributed, setTotalContributed] = useState<bigint | null>(null);
+  const [phase, setPhase] = useState<string>('Loading...');
+
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        const [budgetRes, contributedRes, phaseRes] = await Promise.all([
+          programme.budget(),
+          programme.total_contributed(),
+          programme.get_phase()
+        ]);
+        
+        setBudget(budgetRes.result.unwrap());
+        setTotalContributed(contributedRes.result.unwrap());
+        setPhase(phaseRes.result.unwrap().tag);
+      } catch (error) {
+        console.error("Failed to fetch programme data:", error);
+        setPhase("Error");
+      }
+    };
+    fetchData();
+  }, [programme]);
+
   return (
     <div className="dashboard-container">
       <header className="dashboard-header animate-fade-up">
@@ -14,15 +40,15 @@ export const FunderDashboard: React.FC = () => {
         <div className="stat-card glass-panel">
           <div className="stat-icon"><TrendingUp size={24} /></div>
           <div className="stat-content">
-            <span className="stat-label">Total Committed</span>
-            <span className="stat-value">$250,000</span>
+            <span className="stat-label">Net Budget (After Fees)</span>
+            <span className="stat-value">{budget ? `${formatAmount(budget)} XLM` : '...'}</span>
           </div>
         </div>
         <div className="stat-card glass-panel">
-          <div className="stat-icon"><Users size={24} /></div>
+          <div className="stat-icon"><Activity size={24} /></div>
           <div className="stat-content">
-            <span className="stat-label">Active Recipients</span>
-            <span className="stat-value">124</span>
+            <span className="stat-label">Total Contributed</span>
+            <span className="stat-value">{totalContributed ? `${formatAmount(totalContributed)} XLM` : '...'}</span>
           </div>
         </div>
         <div className="stat-card glass-panel">
@@ -39,8 +65,8 @@ export const FunderDashboard: React.FC = () => {
         <div className="programs-grid">
           <div className="program-card glass-panel">
             <div className="program-header">
-              <h3>CS Scholarship 2026</h3>
-              <span className="badge badge-active">Active</span>
+              <h3>CS Scholarship 2026 (Seeded)</h3>
+              <span className={`badge badge-${phase.toLowerCase()}`}>{phase}</span>
             </div>
             <p className="typo-text text-muted">Supporting 50 undergraduate computer science students across Lagos.</p>
             

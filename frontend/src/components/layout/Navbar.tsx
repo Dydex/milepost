@@ -1,9 +1,15 @@
 import React from 'react';
 import { Wallet } from 'lucide-react';
 import { Link } from 'react-router-dom';
+import { useSoroban } from '../../context/SorobanContext';
 import './Navbar.css';
 
 export const Navbar: React.FC = () => {
+  const { address, connectWallet } = useSoroban();
+
+  // Helper to truncate address
+  const truncate = (addr: string) => `${addr.slice(0, 5)}...${addr.slice(-4)}`;
+
   return (
     <header className="navbar glass-panel">
       <div className="navbar-container">
@@ -21,10 +27,17 @@ export const Navbar: React.FC = () => {
         </nav>
 
         <div className="navbar-actions">
-          <button className="btn-primary connect-wallet-btn">
-            <Wallet size={18} />
-            Connect Wallet
-          </button>
+          {address ? (
+            <div className="badge-pill connected-badge" style={{ backgroundColor: 'var(--surface-hover)', border: '1px solid var(--surface-border)' }}>
+              <span className="pulse-dot" style={{ backgroundColor: 'var(--color-success)' }}></span>
+              {truncate(address)}
+            </div>
+          ) : (
+            <button onClick={connectWallet} className="btn-primary connect-wallet-btn">
+              <Wallet size={18} />
+              Connect Wallet
+            </button>
+          )}
         </div>
       </div>
     </header>

@@ -1,6 +1,6 @@
 {
-  "version": "0.0.0",
-  "name": "attest",
+  "version": "0.1.0",
+  "name": "@milepost/attest",
   "type": "module",
   "exports": "./dist/index.js",
   "typings": "dist/index.d.ts",
