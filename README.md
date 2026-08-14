@@ -153,18 +153,6 @@ already determined — by the votes, and by an attestation the verifier signed �
 so requiring a privileged trigger would only let whoever holds it withhold money
 someone has already earned.
 
-### Listing
-
-The contracts store no growing collections, so there is no `get_all_programmes`.
-On Soroban a growing ledger entry costs more to write over time and more to
-restore after archival; a recipient with a long history would become the most
-expensive to serve.
-
-Listings are reconstructed off-chain from events — `ProgrammeCreated`,
-`Applied`, `Reviewed`, `Awarded`, `Released`, `Directed`, `Contributed`. An
-event query module is not yet written, so consumers currently need to know the
-addresses they care about. See [docs/frontend-integration.md](docs/frontend-integration.md).
-
 ---
 
 ## Deployed (testnet)

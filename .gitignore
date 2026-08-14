@@ -12,3 +12,6 @@ dist/
 # environment-specific and should not be committed.
 deployments/*.json
 !deployments/.gitkeep
+
+# Internal integration notes — kept local, not published.
+docs/frontend-integration.md
