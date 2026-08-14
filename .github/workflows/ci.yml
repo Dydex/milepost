@@ -23,15 +23,17 @@ jobs:
       - name: Format
         run: cargo fmt --all --check
 
-      - name: Clippy
-        run: cargo clippy --all-targets --all-features -- -D warnings
-
-      # Must precede the tests: the registry's tests instantiate the programme
-      # from its built wasm, the same way the registry does on-chain. Contracts
-      # are also billed by deployed size, so this belongs in CI rather than
-      # being discovered at deploy time.
+      # Must precede both Clippy and Test. The registry's tests instantiate the
+      # programme from its built wasm, the same way the registry does on-chain,
+      # so the artifact has to exist before anything compiles a test target —
+      # and `clippy --all-targets` compiles test targets too. Contracts are also
+      # billed by deployed size, so building here beats discovering it at deploy
+      # time.
       - name: Build wasm
         run: cargo build --target wasm32v1-none --release
+
+      - name: Clippy
+        run: cargo clippy --all-targets --all-features -- -D warnings
 
       - name: Test
         run: cargo test --all-features
