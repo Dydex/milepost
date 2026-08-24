@@ -15,3 +15,6 @@ deployments/*.json
 
 # Internal integration notes — kept local, not published.
 docs/frontend-integration.md
+
+# Issue drafts under review — not repository documentation.
+drafts/
