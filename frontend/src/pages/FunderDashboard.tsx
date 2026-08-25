@@ -1,34 +1,16 @@
-import { useEffect, useState } from 'react';
 import './FunderDashboard.css';
 import { TrendingUp, CheckCircle, Activity } from 'lucide-react';
-import { useSoroban } from '../context/useSoroban';
+import { useContractRead, useContractResult, useProgramme } from '../hooks';
+import { AsyncView } from '../components/state/AsyncStates';
+import { PhaseBadge } from '../components/ui';
 import { formatAmount } from '../lib/amount';
 
 export const FunderDashboard = () => {
-  const { demoProgramme: programme } = useSoroban();
-  const [budget, setBudget] = useState<bigint | null>(null);
-  const [totalContributed, setTotalContributed] = useState<bigint | null>(null);
-  const [phase, setPhase] = useState<string>('Loading...');
+  const { client: programme } = useProgramme();
 
-  useEffect(() => {
-    const fetchData = async () => {
-      try {
-        const [budgetRes, contributedRes, phaseRes] = await Promise.all([
-          programme.budget(),
-          programme.total_contributed(),
-          programme.get_phase()
-        ]);
-        
-        setBudget(budgetRes.result.unwrap());
-        setTotalContributed(contributedRes.result);
-        setPhase(phaseRes.result.unwrap().tag);
-      } catch (error) {
-        console.error("Failed to fetch programme data:", error);
-        setPhase("Error");
-      }
-    };
-    fetchData();
-  }, [programme]);
+  const budget = useContractResult(() => programme.budget(), [programme]);
+  const contributed = useContractRead(() => programme.total_contributed(), [programme]);
+  const phase = useContractResult(() => programme.get_phase(), [programme]);
 
   return (
     <div className="dashboard-container">
@@ -42,14 +24,22 @@ export const FunderDashboard = () => {
           <div className="stat-icon"><TrendingUp size={24} /></div>
           <div className="stat-content">
             <span className="stat-label">Net Budget (After Fees)</span>
-            <span className="stat-value">{budget ? `${formatAmount(budget)} XLM` : '...'}</span>
+            <span className="stat-value numeric">
+              <AsyncView {...budget} onRetry={budget.refetch}>
+                {(value) => `${formatAmount(value)} XLM`}
+              </AsyncView>
+            </span>
           </div>
         </div>
         <div className="stat-card glass-panel">
           <div className="stat-icon"><Activity size={24} /></div>
           <div className="stat-content">
             <span className="stat-label">Total Contributed</span>
-            <span className="stat-value">{totalContributed ? `${formatAmount(totalContributed)} XLM` : '...'}</span>
+            <span className="stat-value numeric">
+              <AsyncView {...contributed} onRetry={contributed.refetch}>
+                {(value) => `${formatAmount(value)} XLM`}
+              </AsyncView>
+            </span>
           </div>
         </div>
         <div className="stat-card glass-panel">
@@ -67,7 +57,9 @@ export const FunderDashboard = () => {
           <div className="program-card glass-panel">
             <div className="program-header">
               <h3>CS Scholarship 2026 (Seeded)</h3>
-              <span className={`badge badge-${phase.toLowerCase()}`}>{phase}</span>
+              <AsyncView {...phase} onRetry={phase.refetch}>
+                {(value) => <PhaseBadge phase={value.tag} />}
+              </AsyncView>
             </div>
             <p className="typo-text text-muted">Supporting 50 undergraduate computer science students across Lagos.</p>
             
