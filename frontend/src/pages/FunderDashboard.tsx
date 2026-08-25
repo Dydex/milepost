@@ -1,7 +1,8 @@
-import { useEffect, useState } from 'react';
 import './FunderDashboard.css';
 import { TrendingUp, CheckCircle, Activity, WalletCards } from 'lucide-react';
-import { useSoroban } from '../context/useSoroban';
+import { useContractRead, useContractResult, useProgramme } from '../hooks';
+import { AsyncView } from '../components/state/AsyncStates';
+import { PhaseBadge } from '../components/ui';
 import { formatAmount, percentOf } from '../lib/amount';
 
 interface BudgetBreakdown {
@@ -20,37 +21,39 @@ const formatXlm = (amount: bigint) => formatAmount(amount, { asset: 'XLM' });
 const formatPercent = (value: number) => `${value.toFixed(2)}%`;
 
 export const FunderDashboard = () => {
-  const { demoProgramme: programme } = useSoroban();
-  const [breakdown, setBreakdown] = useState<BudgetBreakdown | null>(null);
-  const [phase, setPhase] = useState<string>('Loading...');
+  const { client: programme } = useProgramme();
 
-  useEffect(() => {
-    const fetchData = async () => {
-      try {
-        const [budgetRes, feeRes, contributedRes, grantedRes, releasedRes, phaseRes] = await Promise.all([
-          programme.budget(),
-          programme.fee(),
-          programme.total_contributed(),
-          programme.total_granted(),
-          programme.total_released(),
-          programme.get_phase()
-        ]);
-        
-        setBreakdown({
-          budget: budgetRes.result.unwrap(),
-          fee: feeRes.result.unwrap(),
-          totalContributed: contributedRes.result,
-          totalGranted: grantedRes.result,
-          totalReleased: releasedRes.result
-        });
-        setPhase(phaseRes.result.unwrap().tag);
-      } catch (error) {
-        console.error("Failed to fetch programme data:", error);
-        setPhase("Error");
-      }
-    };
-    fetchData();
-  }, [programme]);
+  const budget = useContractResult(() => programme.budget(), [programme]);
+  const fee = useContractResult(() => programme.fee(), [programme]);
+  const contributed = useContractRead(() => programme.total_contributed(), [programme]);
+  const granted = useContractRead(() => programme.total_granted(), [programme]);
+  const released = useContractRead(() => programme.total_released(), [programme]);
+  const phase = useContractResult(() => programme.get_phase(), [programme]);
+
+  const breakdown: BudgetBreakdown | null =
+    budget.data !== null &&
+    fee.data !== null &&
+    contributed.data !== null &&
+    granted.data !== null &&
+    released.data !== null
+      ? {
+          budget: budget.data,
+          fee: fee.data,
+          totalContributed: contributed.data,
+          totalGranted: granted.data,
+          totalReleased: released.data,
+        }
+      : null;
+
+  const breakdownLoading = budget.loading || fee.loading || contributed.loading || granted.loading || released.loading;
+  const breakdownError = budget.error || fee.error || contributed.error || granted.error || released.error;
+  const refetchBreakdown = () => {
+    budget.refetch();
+    fee.refetch();
+    contributed.refetch();
+    granted.refetch();
+    released.refetch();
+  };
 
   const feePercent = breakdown ? percentOf(breakdown.fee, breakdown.totalContributed) : 0;
   const committedUnreleased = breakdown ? maxBigint(breakdown.totalGranted - breakdown.totalReleased, ZERO) : ZERO;
@@ -72,21 +75,33 @@ export const FunderDashboard = () => {
           <div className="stat-icon"><TrendingUp size={24} /></div>
           <div className="stat-content">
             <span className="stat-label">Net Budget (After Fees)</span>
-            <span className="stat-value">{breakdown ? formatXlm(breakdown.budget) : '...'}</span>
+            <span className="stat-value numeric">
+              <AsyncView {...budget} onRetry={budget.refetch}>
+                {(value) => formatXlm(value)}
+              </AsyncView>
+            </span>
           </div>
         </div>
         <div className="stat-card glass-panel">
           <div className="stat-icon"><Activity size={24} /></div>
           <div className="stat-content">
             <span className="stat-label">Total Contributed</span>
-            <span className="stat-value">{breakdown ? formatXlm(breakdown.totalContributed) : '...'}</span>
+            <span className="stat-value numeric">
+              <AsyncView {...contributed} onRetry={contributed.refetch}>
+                {(value) => formatXlm(value)}
+              </AsyncView>
+            </span>
           </div>
         </div>
         <div className="stat-card glass-panel">
           <div className="stat-icon"><CheckCircle size={24} /></div>
           <div className="stat-content">
             <span className="stat-label">Total Released</span>
-            <span className="stat-value">{breakdown ? formatXlm(breakdown.totalReleased) : '...'}</span>
+            <span className="stat-value numeric">
+              <AsyncView {...released} onRetry={released.refetch}>
+                {(value) => formatXlm(value)}
+              </AsyncView>
+            </span>
           </div>
         </div>
       </section>
@@ -102,68 +117,80 @@ export const FunderDashboard = () => {
           </div>
         </div>
 
-        <div className="budget-equation" aria-label="Budget equals total contributed minus fee">
-          <div>
-            <span className="budget-equation-label">Contributed</span>
-            <strong className="numeric">{breakdown ? formatXlm(breakdown.totalContributed) : '...'}</strong>
-          </div>
-          <span className="budget-equation-symbol">-</span>
-          <div>
-            <span className="budget-equation-label">Fee</span>
-            <strong className="numeric">{breakdown ? formatXlm(breakdown.fee) : '...'}</strong>
-          </div>
-          <span className="budget-equation-symbol">=</span>
-          <div>
-            <span className="budget-equation-label">Budget</span>
-            <strong className="numeric">{breakdown ? formatXlm(breakdown.budget) : '...'}</strong>
-          </div>
-        </div>
+        <AsyncView
+          data={breakdown}
+          loading={breakdownLoading}
+          error={breakdownError}
+          onRetry={refetchBreakdown}
+          contract="program"
+        >
+          {(figures) => (
+            <>
+              <div className="budget-equation" aria-label="Budget equals total contributed minus fee">
+                <div>
+                  <span className="budget-equation-label">Contributed</span>
+                  <strong className="numeric">{formatXlm(figures.totalContributed)}</strong>
+                </div>
+                <span className="budget-equation-symbol">-</span>
+                <div>
+                  <span className="budget-equation-label">Fee</span>
+                  <strong className="numeric">{formatXlm(figures.fee)}</strong>
+                </div>
+                <span className="budget-equation-symbol">=</span>
+                <div>
+                  <span className="budget-equation-label">Budget</span>
+                  <strong className="numeric">{formatXlm(figures.budget)}</strong>
+                </div>
+              </div>
 
-        <div className="budget-meter" aria-label="Budget allocation">
-          <div
-            className="budget-meter-segment budget-meter-released"
-            style={{ width: `${breakdown ? percentOf(releasedSegment, breakdown.budget) : 0}%` }}
-            title="Released"
-          />
-          <div
-            className="budget-meter-segment budget-meter-committed"
-            style={{ width: `${breakdown ? percentOf(committedSegment, breakdown.budget) : 0}%` }}
-            title="Committed but unreleased"
-          />
-          <div
-            className="budget-meter-segment budget-meter-unallocated"
-            style={{ width: `${breakdown ? percentOf(unallocatedSegment, breakdown.budget) : 0}%` }}
-            title="Unallocated budget"
-          />
-        </div>
+              <div className="budget-meter" aria-label="Budget allocation">
+                <div
+                  className="budget-meter-segment budget-meter-released"
+                  style={{ width: `${percentOf(releasedSegment, figures.budget)}%` }}
+                  title="Released"
+                />
+                <div
+                  className="budget-meter-segment budget-meter-committed"
+                  style={{ width: `${percentOf(committedSegment, figures.budget)}%` }}
+                  title="Committed but unreleased"
+                />
+                <div
+                  className="budget-meter-segment budget-meter-unallocated"
+                  style={{ width: `${percentOf(unallocatedSegment, figures.budget)}%` }}
+                  title="Unallocated budget"
+                />
+              </div>
 
-        <div className="budget-breakdown-grid">
-          <div className="budget-breakdown-item">
-            <span className="budget-swatch budget-swatch-fee" />
-            <span className="budget-breakdown-label">Protocol fee</span>
-            <strong className="numeric">{breakdown ? `${formatXlm(breakdown.fee)} (${formatPercent(feePercent)})` : '...'}</strong>
-          </div>
-          <div className="budget-breakdown-item">
-            <span className="budget-swatch budget-swatch-granted" />
-            <span className="budget-breakdown-label">Total granted</span>
-            <strong className="numeric">{breakdown ? formatXlm(breakdown.totalGranted) : '...'}</strong>
-          </div>
-          <div className="budget-breakdown-item">
-            <span className="budget-swatch budget-swatch-released" />
-            <span className="budget-breakdown-label">Released</span>
-            <strong className="numeric">{breakdown ? formatXlm(breakdown.totalReleased) : '...'}</strong>
-          </div>
-          <div className="budget-breakdown-item">
-            <span className="budget-swatch budget-swatch-committed" />
-            <span className="budget-breakdown-label">Committed, unpaid</span>
-            <strong className="numeric">{breakdown ? formatXlm(committedUnreleased) : '...'}</strong>
-          </div>
-          <div className="budget-breakdown-item">
-            <span className="budget-swatch budget-swatch-unallocated" />
-            <span className="budget-breakdown-label">Unallocated budget</span>
-            <strong className="numeric">{breakdown ? formatXlm(unallocatedBudget) : '...'}</strong>
-          </div>
-        </div>
+              <div className="budget-breakdown-grid">
+                <div className="budget-breakdown-item">
+                  <span className="budget-swatch budget-swatch-fee" />
+                  <span className="budget-breakdown-label">Protocol fee</span>
+                  <strong className="numeric">{formatXlm(figures.fee)} ({formatPercent(feePercent)})</strong>
+                </div>
+                <div className="budget-breakdown-item">
+                  <span className="budget-swatch budget-swatch-granted" />
+                  <span className="budget-breakdown-label">Total granted</span>
+                  <strong className="numeric">{formatXlm(figures.totalGranted)}</strong>
+                </div>
+                <div className="budget-breakdown-item">
+                  <span className="budget-swatch budget-swatch-released" />
+                  <span className="budget-breakdown-label">Released</span>
+                  <strong className="numeric">{formatXlm(figures.totalReleased)}</strong>
+                </div>
+                <div className="budget-breakdown-item">
+                  <span className="budget-swatch budget-swatch-committed" />
+                  <span className="budget-breakdown-label">Committed, unpaid</span>
+                  <strong className="numeric">{formatXlm(committedUnreleased)}</strong>
+                </div>
+                <div className="budget-breakdown-item">
+                  <span className="budget-swatch budget-swatch-unallocated" />
+                  <span className="budget-breakdown-label">Unallocated budget</span>
+                  <strong className="numeric">{formatXlm(unallocatedBudget)}</strong>
+                </div>
+              </div>
+            </>
+          )}
+        </AsyncView>
       </section>
 
       <section className="programs-section animate-fade-up" style={{ animationDelay: '300ms' }}>
@@ -172,10 +199,12 @@ export const FunderDashboard = () => {
           <div className="program-card glass-panel">
             <div className="program-header">
               <h3>CS Scholarship 2026 (Seeded)</h3>
-              <span className={`badge badge-${phase.toLowerCase()}`}>{phase}</span>
+              <AsyncView {...phase} onRetry={phase.refetch}>
+                {(value) => <PhaseBadge phase={value.tag} />}
+              </AsyncView>
             </div>
             <p className="typo-text text-muted">Supporting 50 undergraduate computer science students across Lagos.</p>
-            
+
             <div className="progress-container">
               <div className="progress-labels">
                 <span>Disbursement Progress</span>
