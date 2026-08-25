@@ -47,8 +47,8 @@ export const VerifierDashboard: React.FC = () => {
               </p>
             </div>
             <div className="queue-item-actions">
-              <button className="btn-secondary">View Proof</button>
-              <button className="btn-primary">Sign Attestation</button>
+              <button type="button" className="btn-secondary">View Proof</button>
+              <button type="button" className="btn-primary">Sign Attestation</button>
             </div>
           </div>
 
@@ -68,8 +68,8 @@ export const VerifierDashboard: React.FC = () => {
               </p>
             </div>
             <div className="queue-item-actions">
-              <button className="btn-secondary">View Proof</button>
-              <button className="btn-primary">Sign Attestation</button>
+              <button type="button" className="btn-secondary">View Proof</button>
+              <button type="button" className="btn-primary">Sign Attestation</button>
             </div>
           </div>
 
