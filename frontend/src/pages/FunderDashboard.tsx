@@ -1,26 +1,48 @@
 import { useEffect, useState } from 'react';
 import './FunderDashboard.css';
-import { TrendingUp, CheckCircle, Activity } from 'lucide-react';
+import { TrendingUp, CheckCircle, Activity, WalletCards } from 'lucide-react';
 import { useSoroban } from '../context/useSoroban';
-import { formatAmount } from '../lib/amount';
+import { formatAmount, percentOf } from '../lib/amount';
+
+interface BudgetBreakdown {
+  budget: bigint;
+  fee: bigint;
+  totalContributed: bigint;
+  totalGranted: bigint;
+  totalReleased: bigint;
+}
+
+const ZERO = 0n;
+
+const maxBigint = (value: bigint, minimum: bigint) => value > minimum ? value : minimum;
+const minBigint = (value: bigint, maximum: bigint) => value < maximum ? value : maximum;
+const formatXlm = (amount: bigint) => formatAmount(amount, { asset: 'XLM' });
+const formatPercent = (value: number) => `${value.toFixed(2)}%`;
 
 export const FunderDashboard = () => {
   const { demoProgramme: programme } = useSoroban();
-  const [budget, setBudget] = useState<bigint | null>(null);
-  const [totalContributed, setTotalContributed] = useState<bigint | null>(null);
+  const [breakdown, setBreakdown] = useState<BudgetBreakdown | null>(null);
   const [phase, setPhase] = useState<string>('Loading...');
 
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const [budgetRes, contributedRes, phaseRes] = await Promise.all([
+        const [budgetRes, feeRes, contributedRes, grantedRes, releasedRes, phaseRes] = await Promise.all([
           programme.budget(),
+          programme.fee(),
           programme.total_contributed(),
+          programme.total_granted(),
+          programme.total_released(),
           programme.get_phase()
         ]);
         
-        setBudget(budgetRes.result.unwrap());
-        setTotalContributed(contributedRes.result);
+        setBreakdown({
+          budget: budgetRes.result.unwrap(),
+          fee: feeRes.result.unwrap(),
+          totalContributed: contributedRes.result,
+          totalGranted: grantedRes.result,
+          totalReleased: releasedRes.result
+        });
         setPhase(phaseRes.result.unwrap().tag);
       } catch (error) {
         console.error("Failed to fetch programme data:", error);
@@ -29,6 +51,14 @@ export const FunderDashboard = () => {
     };
     fetchData();
   }, [programme]);
+
+  const feePercent = breakdown ? percentOf(breakdown.fee, breakdown.totalContributed) : 0;
+  const committedUnreleased = breakdown ? maxBigint(breakdown.totalGranted - breakdown.totalReleased, ZERO) : ZERO;
+  const unallocatedBudget = breakdown ? maxBigint(breakdown.budget - breakdown.totalGranted, ZERO) : ZERO;
+
+  const releasedSegment = breakdown ? minBigint(maxBigint(breakdown.totalReleased, ZERO), breakdown.budget) : ZERO;
+  const committedSegment = breakdown ? minBigint(committedUnreleased, maxBigint(breakdown.budget - releasedSegment, ZERO)) : ZERO;
+  const unallocatedSegment = breakdown ? maxBigint(breakdown.budget - releasedSegment - committedSegment, ZERO) : ZERO;
 
   return (
     <div className="dashboard-container">
@@ -42,26 +72,101 @@ export const FunderDashboard = () => {
           <div className="stat-icon"><TrendingUp size={24} /></div>
           <div className="stat-content">
             <span className="stat-label">Net Budget (After Fees)</span>
-            <span className="stat-value">{budget ? `${formatAmount(budget)} XLM` : '...'}</span>
+            <span className="stat-value">{breakdown ? formatXlm(breakdown.budget) : '...'}</span>
           </div>
         </div>
         <div className="stat-card glass-panel">
           <div className="stat-icon"><Activity size={24} /></div>
           <div className="stat-content">
             <span className="stat-label">Total Contributed</span>
-            <span className="stat-value">{totalContributed ? `${formatAmount(totalContributed)} XLM` : '...'}</span>
+            <span className="stat-value">{breakdown ? formatXlm(breakdown.totalContributed) : '...'}</span>
           </div>
         </div>
         <div className="stat-card glass-panel">
           <div className="stat-icon"><CheckCircle size={24} /></div>
           <div className="stat-content">
-            <span className="stat-label">Tranches Unlocked</span>
-            <span className="stat-value">48</span>
+            <span className="stat-label">Total Released</span>
+            <span className="stat-value">{breakdown ? formatXlm(breakdown.totalReleased) : '...'}</span>
           </div>
         </div>
       </section>
 
-      <section className="programs-section animate-fade-up" style={{ animationDelay: '200ms' }}>
+      <section className="budget-panel glass-panel animate-fade-up" style={{ animationDelay: '200ms' }}>
+        <div className="budget-panel-header">
+          <div>
+            <span className="stat-label">Programme funds</span>
+            <h2>Budget and fee breakdown</h2>
+          </div>
+          <div className="budget-panel-icon">
+            <WalletCards size={24} />
+          </div>
+        </div>
+
+        <div className="budget-equation" aria-label="Budget equals total contributed minus fee">
+          <div>
+            <span className="budget-equation-label">Contributed</span>
+            <strong className="numeric">{breakdown ? formatXlm(breakdown.totalContributed) : '...'}</strong>
+          </div>
+          <span className="budget-equation-symbol">-</span>
+          <div>
+            <span className="budget-equation-label">Fee</span>
+            <strong className="numeric">{breakdown ? formatXlm(breakdown.fee) : '...'}</strong>
+          </div>
+          <span className="budget-equation-symbol">=</span>
+          <div>
+            <span className="budget-equation-label">Budget</span>
+            <strong className="numeric">{breakdown ? formatXlm(breakdown.budget) : '...'}</strong>
+          </div>
+        </div>
+
+        <div className="budget-meter" aria-label="Budget allocation">
+          <div
+            className="budget-meter-segment budget-meter-released"
+            style={{ width: `${breakdown ? percentOf(releasedSegment, breakdown.budget) : 0}%` }}
+            title="Released"
+          />
+          <div
+            className="budget-meter-segment budget-meter-committed"
+            style={{ width: `${breakdown ? percentOf(committedSegment, breakdown.budget) : 0}%` }}
+            title="Committed but unreleased"
+          />
+          <div
+            className="budget-meter-segment budget-meter-unallocated"
+            style={{ width: `${breakdown ? percentOf(unallocatedSegment, breakdown.budget) : 0}%` }}
+            title="Unallocated budget"
+          />
+        </div>
+
+        <div className="budget-breakdown-grid">
+          <div className="budget-breakdown-item">
+            <span className="budget-swatch budget-swatch-fee" />
+            <span className="budget-breakdown-label">Protocol fee</span>
+            <strong className="numeric">{breakdown ? `${formatXlm(breakdown.fee)} (${formatPercent(feePercent)})` : '...'}</strong>
+          </div>
+          <div className="budget-breakdown-item">
+            <span className="budget-swatch budget-swatch-granted" />
+            <span className="budget-breakdown-label">Total granted</span>
+            <strong className="numeric">{breakdown ? formatXlm(breakdown.totalGranted) : '...'}</strong>
+          </div>
+          <div className="budget-breakdown-item">
+            <span className="budget-swatch budget-swatch-released" />
+            <span className="budget-breakdown-label">Released</span>
+            <strong className="numeric">{breakdown ? formatXlm(breakdown.totalReleased) : '...'}</strong>
+          </div>
+          <div className="budget-breakdown-item">
+            <span className="budget-swatch budget-swatch-committed" />
+            <span className="budget-breakdown-label">Committed, unpaid</span>
+            <strong className="numeric">{breakdown ? formatXlm(committedUnreleased) : '...'}</strong>
+          </div>
+          <div className="budget-breakdown-item">
+            <span className="budget-swatch budget-swatch-unallocated" />
+            <span className="budget-breakdown-label">Unallocated budget</span>
+            <strong className="numeric">{breakdown ? formatXlm(unallocatedBudget) : '...'}</strong>
+          </div>
+        </div>
+      </section>
+
+      <section className="programs-section animate-fade-up" style={{ animationDelay: '300ms' }}>
         <h2>Active Programs</h2>
         <div className="programs-grid">
           <div className="program-card glass-panel">
