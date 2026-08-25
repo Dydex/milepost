@@ -25,40 +25,76 @@ export interface ModalProps {
 export function Modal({ open, onClose, title, children, footer, busy = false }: ModalProps) {
   const dialogRef = useRef<HTMLDivElement>(null);
   const returnFocusTo = useRef<HTMLElement | null>(null);
+  const busyRef = useRef(busy);
+  const onCloseRef = useRef(onClose);
 
-  const focusables = useCallback(
-    () =>
-      Array.from(
-        dialogRef.current?.querySelectorAll<HTMLElement>(
-          'a[href], button:not([disabled]), input:not([disabled]), select, textarea, [tabindex]:not([tabindex="-1"])',
-        ) ?? [],
+  useEffect(() => {
+    busyRef.current = busy;
+    onCloseRef.current = onClose;
+  }, [busy, onClose]);
+
+  const focusables = useCallback(() => {
+    if (!dialogRef.current) return [];
+    const elements = Array.from(
+      dialogRef.current.querySelectorAll<HTMLElement>(
+        'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
       ),
-    [],
-  );
+    );
+    return elements.filter((el) => {
+      return (
+        !el.hasAttribute('disabled') &&
+        el.getAttribute('aria-hidden') !== 'true' &&
+        el.tabIndex !== -1
+      );
+    });
+  }, []);
 
   useEffect(() => {
     if (!open) return;
 
     returnFocusTo.current = document.activeElement as HTMLElement | null;
-    const first = focusables()[0] ?? dialogRef.current;
-    first?.focus();
+
+    const initialFocus = () => {
+      const items = focusables();
+      const first = items[0] ?? dialogRef.current;
+      first?.focus();
+    };
+
+    initialFocus();
+    const timer = requestAnimationFrame(initialFocus);
 
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape' && !busy) {
-        onClose();
+      if (event.key === 'Escape' && !busyRef.current) {
+        event.preventDefault();
+        event.stopPropagation();
+        onCloseRef.current();
         return;
       }
       if (event.key !== 'Tab') return;
 
       const items = focusables();
-      if (items.length === 0) return;
+      if (items.length === 0) {
+        event.preventDefault();
+        dialogRef.current?.focus();
+        return;
+      }
 
       const firstItem = items[0];
       const lastItem = items[items.length - 1];
       const active = document.activeElement;
 
+      if (!dialogRef.current?.contains(active)) {
+        event.preventDefault();
+        if (event.shiftKey) {
+          lastItem.focus();
+        } else {
+          firstItem.focus();
+        }
+        return;
+      }
+
       // Wrap at both ends, or focus escapes to the page behind the dialog.
-      if (event.shiftKey && active === firstItem) {
+      if (event.shiftKey && (active === firstItem || active === dialogRef.current)) {
         event.preventDefault();
         lastItem.focus();
       } else if (!event.shiftKey && active === lastItem) {
@@ -72,11 +108,12 @@ export function Modal({ open, onClose, title, children, footer, busy = false }: 
     document.body.style.overflow = 'hidden';
 
     return () => {
+      cancelAnimationFrame(timer);
       document.removeEventListener('keydown', onKeyDown);
       document.body.style.overflow = previousOverflow;
       returnFocusTo.current?.focus();
     };
-  }, [open, busy, onClose, focusables]);
+  }, [open, focusables]);
 
   if (!open) return null;
 

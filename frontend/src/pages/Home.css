@@ -272,12 +272,12 @@
   align-items: center;
 }
 
-.grid-row.reverse {
-  direction: rtl;
+.grid-row.reverse .grid-content {
+  order: 2;
 }
 
-.grid-row.reverse > * {
-  direction: ltr;
+.grid-row.reverse .grid-visual {
+  order: 1;
 }
 
 .grid-content {
@@ -564,8 +564,12 @@ code {
     grid-template-columns: 1fr;
   }
   
-  .grid-row.reverse {
-    direction: ltr;
+  .grid-row.reverse .grid-content {
+    order: 1;
+  }
+  
+  .grid-row.reverse .grid-visual {
+    order: 2;
   }
   
   .infra-container {
