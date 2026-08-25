@@ -1,7 +1,7 @@
 import React, { useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import './Home.css';
-import { ArrowRight, CheckCircle, Shield, Zap, Layers, Lock, Unlock, Network, ArrowUpRight } from 'lucide-react';
+import { ArrowRight, CheckCircle, Shield, Zap, Lock, Unlock, ArrowUpRight } from 'lucide-react';
 
 export const Home: React.FC = () => {
   const observerRef = useRef<IntersectionObserver | null>(null);

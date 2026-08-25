@@ -1,10 +1,11 @@
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import './FunderDashboard.css';
-import { TrendingUp, Users, CheckCircle, Activity } from 'lucide-react';
-import { useSoroban } from '../context/SorobanContext';
+import { TrendingUp, CheckCircle, Activity } from 'lucide-react';
+import { useSoroban } from '../context/useSoroban';
+import { formatAmount } from '../lib/amount';
 
-export const FunderDashboard: React.FC = () => {
-  const { programme, formatAmount } = useSoroban();
+export const FunderDashboard = () => {
+  const { demoProgramme: programme } = useSoroban();
   const [budget, setBudget] = useState<bigint | null>(null);
   const [totalContributed, setTotalContributed] = useState<bigint | null>(null);
   const [phase, setPhase] = useState<string>('Loading...');
@@ -19,7 +20,7 @@ export const FunderDashboard: React.FC = () => {
         ]);
         
         setBudget(budgetRes.result.unwrap());
-        setTotalContributed(contributedRes.result.unwrap());
+        setTotalContributed(contributedRes.result);
         setPhase(phaseRes.result.unwrap().tag);
       } catch (error) {
         console.error("Failed to fetch programme data:", error);

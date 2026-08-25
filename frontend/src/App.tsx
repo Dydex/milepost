@@ -1,7 +1,7 @@
-import React from 'react';
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import { ThemeProvider } from './context/ThemeContext';
 import { SorobanProvider } from './context/SorobanContext';
+import { WalletProvider } from './context/WalletContext';
 import { Layout } from './components/layout/Layout';
 import { Home } from './pages/Home';
 import { FunderDashboard } from './pages/FunderDashboard';
@@ -11,7 +11,8 @@ import { VerifierDashboard } from './pages/VerifierDashboard';
 function App() {
   return (
     <ThemeProvider>
-      <SorobanProvider>
+      <WalletProvider>
+        <SorobanProvider>
         <Router>
           <Routes>
             <Route path="/" element={<Layout />}>
@@ -23,6 +24,7 @@ function App() {
           </Routes>
         </Router>
       </SorobanProvider>
+      </WalletProvider>
     </ThemeProvider>
   );
 }

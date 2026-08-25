@@ -1,18 +1,22 @@
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import './RecipientDashboard.css';
 import { Award, Unlock, FileText, AlertCircle } from 'lucide-react';
-import { useSoroban } from '../context/SorobanContext';
+import { useSoroban } from '../context/useSoroban';
+import { useWallet } from '../context/useWallet';
+import { formatAmount } from '../lib/amount';
+import type { Award as AwardData, Application } from '@milepost/program';
 
 // Seeded testnet recipient (Ada) for demo purposes
 const DEMO_ADDRESS = "GAH3D4RM45ETE4W7VDRCWZBPRPT63CJXAGXFYVBC2FGANBZTS4OTKXCA";
 
-export const RecipientDashboard: React.FC = () => {
-  const { address, programme, formatAmount } = useSoroban();
+export const RecipientDashboard = () => {
+  const { address } = useWallet();
+  const { demoProgramme: programme } = useSoroban();
   const activeAddress = address || DEMO_ADDRESS;
   const isDemo = !address;
 
-  const [award, setAward] = useState<unknown>(null);
-  const [application, setApplication] = useState<unknown>(null);
+  const [award, setAward] = useState<AwardData | null>(null);
+  const [application, setApplication] = useState<Application | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -22,17 +26,13 @@ export const RecipientDashboard: React.FC = () => {
         // 1. Fetch Application
         const appRes = await programme.get_application({ applicant: activeAddress });
         
-        if (appRes.result && typeof appRes.result.unwrap === 'function') {
-          const app = appRes.result.unwrap();
-          setApplication(app);
-          
-          // 2. If finalized, fetch Award
-          if (app.finalized) {
-            const awardRes = await programme.get_award({ recipient: activeAddress });
-            if (awardRes.result && typeof awardRes.result.unwrap === 'function') {
-              setAward(awardRes.result.unwrap());
-            }
-          }
+        const app = appRes.result.unwrap();
+        setApplication(app);
+
+        // 2. If finalized, fetch Award
+        if (app.finalized) {
+          const awardRes = await programme.get_award({ recipient: activeAddress });
+          setAward(awardRes.result.unwrap());
         }
       } catch (e) {
         console.error("Not a recipient or data missing:", e);
@@ -104,17 +104,17 @@ export const RecipientDashboard: React.FC = () => {
               <AlertCircle size={20} />
             </div>
             <div className="milestone-details">
-              <h3>Funding Mode: {award ? (award as any).mode.tag : 'Pending Settle'}</h3>
+              <h3>Funding Mode: {award ? award.mode.tag : 'Pending Settle'}</h3>
               <p className="typo-text text-muted">
-                {(award as any)?.mode.tag === 'Allocated' && "You can allocate your unlocked tranches to any verified payee."}
-                {(award as any)?.mode.tag === 'Direct' && "Funds are paid directly to your fixed payee."}
+                {award?.mode.tag === 'Allocated' && "You can allocate your unlocked tranches to any verified payee."}
+                {award?.mode.tag === 'Direct' && "Funds are paid directly to your fixed payee."}
               </p>
               
-              {(application as any).votes && (application as any).votes.length > 0 && (
+              {application && application.votes.length > 0 && (
                 <div style={{ marginTop: '1rem', padding: '1rem', backgroundColor: 'var(--background)', borderRadius: '8px' }}>
                   <p className="text-muted" style={{ fontSize: '0.85rem', marginBottom: '0.5rem' }}>Reviewer Votes (Median Mechanism)</p>
                   <div style={{ display: 'flex', gap: '0.5rem' }}>
-                    {(application as any).votes.map((v: bigint, i: number) => (
+                    {application.votes.map((v: bigint, i: number) => (
                       <span key={i} className="badge" style={{ backgroundColor: 'var(--surface)', border: '1px solid var(--surface-border)' }}>
                         {formatAmount(v)} XLM
                       </span>

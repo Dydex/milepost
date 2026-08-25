@@ -1,11 +1,10 @@
-import React from 'react';
 import { Wallet } from 'lucide-react';
 import { Link } from 'react-router-dom';
-import { useSoroban } from '../../context/SorobanContext';
+import { useWallet } from '../../context/useWallet';
 import './Navbar.css';
 
-export const Navbar: React.FC = () => {
-  const { address, connectWallet } = useSoroban();
+export const Navbar = () => {
+  const { address, connect: connectWallet } = useWallet();
 
   // Helper to truncate address
   const truncate = (addr: string) => `${addr.slice(0, 5)}...${addr.slice(-4)}`;
