@@ -77,11 +77,24 @@ describe('parseAmount', () => {
     expect(() => parseAmount('0.00000001')).toThrow(/decimal places/);
   });
 
+  it('rejects malformed thousands grouping', () => {
+    // Stripping commas before validating accepted these as 12, 123456 and 5 —
+    // numbers nobody typed. Found by @Georgefifth in PR #58.
+    expect(() => parseAmount('1,,,2')).toThrow(/not a valid number/i);
+    expect(() => parseAmount('1,23,456')).toThrow(/not a valid number/i);
+    expect(() => parseAmount(',,,5')).toThrow(/not a valid number/i);
+    expect(parseAmount('1,234,567')).toBe(1_234_567n * STROOPS_PER_UNIT);
+  });
+
+  it('rejects a dangling decimal point', () => {
+    expect(() => parseAmount('1.')).toThrow(/after the decimal/i);
+    expect(() => parseAmount('.5')).toThrow(/before the decimal/i);
+  });
+
   it('rejects empty, malformed and zero input', () => {
     expect(() => parseAmount('')).toThrow();
     expect(() => parseAmount('   ')).toThrow();
     expect(() => parseAmount('abc')).toThrow();
-    expect(() => parseAmount('.')).toThrow();
     expect(() => parseAmount('1.2.3')).toThrow();
     expect(() => parseAmount('-1')).toThrow();
     expect(() => parseAmount('0')).toThrow(/greater than zero/);
@@ -93,7 +106,7 @@ describe('tryParseAmount', () => {
     expect(tryParseAmount('1.5')).toEqual({ ok: true, value: 15_000_000n });
     const bad = tryParseAmount('nope');
     expect(bad.ok).toBe(false);
-    if (!bad.ok) expect(bad.error).toMatch(/digits/);
+    if (!bad.ok) expect(bad.error).toMatch(/not a valid number/i);
   });
 });
 

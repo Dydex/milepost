@@ -88,20 +88,31 @@ export class AmountError extends Error {}
  * something, and quietly discarding a digit is worse than telling them.
  */
 export function parseAmount(input: string): bigint {
-  const trimmed = input.trim().replace(/,/g, '');
+  const trimmed = input.trim();
 
   if (trimmed === '') throw new AmountError('Enter an amount');
-  if (!/^\d*\.?\d*$/.test(trimmed) || trimmed === '.') {
-    throw new AmountError('Amounts may only contain digits and a decimal point');
-  }
+  if (trimmed.startsWith('-')) throw new AmountError('Amount must not be negative');
 
-  const [whole = '', fraction = ''] = trimmed.split('.');
-  if (fraction.length > DECIMALS) {
-    throw new AmountError(`At most ${DECIMALS} decimal places`);
+  const dot = trimmed.indexOf('.');
+  const whole = dot === -1 ? trimmed : trimmed.slice(0, dot);
+  const fraction = dot === -1 ? '' : trimmed.slice(dot + 1);
+
+  if (whole === '') throw new AmountError('Missing digits before the decimal point');
+
+  // Grouping is validated rather than stripped. Removing every comma first
+  // accepts "1,,,2" as 12 and "1,23,456" as 123456 — malformed input taken as
+  // a number the user never typed. Thanks to @Georgefifth for catching this.
+  if (!/^\d+$/.test(whole) && !/^\d{1,3}(,\d{3})*$/.test(whole)) {
+    throw new AmountError(`Not a valid number: "${input}"`);
+  }
+  if (dot !== -1) {
+    if (fraction === '') throw new AmountError('Missing digits after the decimal point');
+    if (!/^\d+$/.test(fraction)) throw new AmountError(`Not a valid number: "${input}"`);
+    if (fraction.length > DECIMALS) throw new AmountError(`At most ${DECIMALS} decimal places`);
   }
 
   const stroops =
-    BigInt(whole === '' ? '0' : whole) * STROOPS_PER_UNIT +
+    BigInt(whole.replaceAll(',', '')) * STROOPS_PER_UNIT +
     BigInt(fraction === '' ? '0' : fraction.padEnd(DECIMALS, '0'));
 
   if (stroops === 0n) throw new AmountError('Amount must be greater than zero');
