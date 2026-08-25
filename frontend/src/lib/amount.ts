@@ -100,8 +100,8 @@ export function parseAmount(input: string): bigint {
   if (whole === '') throw new AmountError('Missing digits before the decimal point');
 
   // Grouping is validated rather than stripped. Removing every comma first
-  // accepts "1,,,2" as 12 and "1,23,456" as 123456 — malformed input taken as
-  // a number the user never typed. Thanks to @Georgefifth for catching this.
+  // accepts "1,,,2" as 12 and "1,23,456" as 123456 — malformed input taken as a
+  // number the user never typed.
   if (!/^\d+$/.test(whole) && !/^\d{1,3}(,\d{3})*$/.test(whole)) {
     throw new AmountError(`Not a valid number: "${input}"`);
   }

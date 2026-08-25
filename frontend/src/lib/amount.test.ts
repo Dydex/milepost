@@ -79,7 +79,7 @@ describe('parseAmount', () => {
 
   it('rejects malformed thousands grouping', () => {
     // Stripping commas before validating accepted these as 12, 123456 and 5 —
-    // numbers nobody typed. Found by @Georgefifth in PR #58.
+    // numbers nobody typed.
     expect(() => parseAmount('1,,,2')).toThrow(/not a valid number/i);
     expect(() => parseAmount('1,23,456')).toThrow(/not a valid number/i);
     expect(() => parseAmount(',,,5')).toThrow(/not a valid number/i);
