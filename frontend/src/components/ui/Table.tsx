@@ -28,7 +28,12 @@ export function Table<Row>({
   caption?: string;
 }) {
   return (
-    <div className="ui-table__scroll">
+    <div
+      className="ui-table__scroll"
+      tabIndex={0}
+      role="region"
+      aria-label={caption ?? 'Data table'}
+    >
       <table className="ui-table">
         {caption && <caption className="visually-hidden">{caption}</caption>}
         <thead>

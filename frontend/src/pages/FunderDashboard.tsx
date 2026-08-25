@@ -216,8 +216,8 @@ export const FunderDashboard = () => {
             </div>
 
             <div className="program-actions">
-              <button className="btn-secondary">View Details</button>
-              <button className="btn-primary">Commit More Funds</button>
+              <button type="button" className="btn-secondary">View Details</button>
+              <button type="button" className="btn-primary">Commit More Funds</button>
             </div>
           </div>
         </div>
