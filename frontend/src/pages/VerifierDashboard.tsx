@@ -10,8 +10,6 @@ import { useContractRead, useContractResult } from '../hooks/useContractRead';
 import { useTransaction } from '../hooks/useTransaction';
 import { looksLikeAddress, truncateAddress } from '../lib/format';
 import { explain } from '../lib/errors';
-import { Badge, Button, Field } from '../components/ui';
-import { ErrorPanel, PendingState } from '../components/state/AsyncStates';
 import { usePageTitle } from '../hooks/usePageTitle';
 import { formatAmount, validateAmount } from '../lib/amount';
 import { AmountField, Badge, Button, Field } from '../components/ui';

@@ -52,10 +52,8 @@ const SpendPolicy = lazyWithRetry(() =>
 const RegistryAdmin = lazyWithRetry(() =>
   import("./pages/RegistryAdmin").then((m) => ({ default: m.RegistryAdmin })),
 );
-const AdminStanding = lazy(() =>
+const AdminStanding = lazyWithRetry(() =>
   import("./pages/AdminStanding").then((m) => ({ default: m.AdminStanding })),
-const AdminDashboard = lazyWithRetry(() =>
-  import("./pages/AdminDashboard").then((m) => ({ default: m.AdminDashboard })),
 );
 const AttestationLookup = lazyWithRetry(() =>
   import("./pages/AttestationLookup").then((m) => ({ default: m.AttestationLookup })),

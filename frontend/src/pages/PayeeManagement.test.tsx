@@ -115,8 +115,8 @@ function makeProgramme() {
   return {
     get_config: vi.fn(() => unwrap({ creator: CREATOR })),
     is_payee: vi.fn(async ({ payee }: { payee: string }) => ({ result: payee === VALID_C })),
-    allow_payees: vi.fn((_args: { payees: string[] }) => sendable(undefined)),
-    deny_payees: vi.fn((_args: { payees: string[] }) => sendable(undefined)),
+    allow_payees: vi.fn<(args: { payees: string[] }) => ReturnType<typeof sendable>>(() => sendable(undefined)),
+    deny_payees: vi.fn<(args: { payees: string[] }) => ReturnType<typeof sendable>>(() => sendable(undefined)),
     allow_payee: vi.fn(() => sendable(undefined)),
     deny_payee: vi.fn(() => sendable(undefined)),
   };
