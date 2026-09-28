@@ -161,6 +161,10 @@ jobs:
       - name: Enforce the app's bundle size budget
         run: ./frontend/scripts/check-bundle-size.sh >> "$GITHUB_STEP_SUMMARY"
 
+      # The component gallery at /dev/ui is for development builds only.
+      - name: Check no development-only pages reached the build
+        run: ./frontend/scripts/check-no-dev-pages.sh
+
       # Not cosmetic. The React Compiler rules here catch render-purity and
       # cascading-setState bugs that type-check cleanly and misbehave at runtime.
       - name: Lint the app

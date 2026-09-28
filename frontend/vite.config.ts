@@ -1,9 +1,28 @@
+import { execSync } from 'node:child_process'
 import { defineConfig } from 'vitest/config'
 import react from '@vitejs/plugin-react'
+
+// The commit the app was built from, shown on /about. CI sets GITHUB_SHA;
+// a local build asks git, and falls back to "dev" outside a checkout.
+function buildVersion(): string {
+  if (process.env.VITE_APP_VERSION) return process.env.VITE_APP_VERSION
+  let sha = process.env.GITHUB_SHA ?? ''
+  if (!sha) {
+    try {
+      sha = execSync('git rev-parse HEAD', { stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim()
+    } catch {
+      sha = ''
+    }
+  }
+  return sha ? sha.slice(0, 7) : 'dev'
+}
 
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [react()],
+  define: {
+    'import.meta.env.VITE_APP_VERSION': JSON.stringify(buildVersion()),
+  },
   test: {
     environment: 'jsdom',
     setupFiles: ['./src/test/setup.ts'],

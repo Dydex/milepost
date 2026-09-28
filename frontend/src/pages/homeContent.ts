@@ -67,6 +67,7 @@ export const ROLES: Role[] = [
       { label: 'Keepalive', path: '/keepalive' },
       { label: 'Payee management', path: '/admin/payees' },
       { label: 'Index status', path: '/status' },
+      { label: 'About deployment', path: '/about' },
     ],
   },
 ];

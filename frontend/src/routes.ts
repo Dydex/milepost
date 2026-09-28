@@ -29,6 +29,7 @@ export const APP_ROUTES: AppRoute[] = [
   { path: '/keepalive', label: 'Keepalive', title: 'Keepalive' },
   { path: '/admin/payees', label: 'Payee management', title: 'Payee Management' },
   { path: '/status', label: 'Index status', title: 'Index Status' },
+  { path: '/about', label: 'About deployment', title: 'About This Deployment' },
 ];
 
 /**
