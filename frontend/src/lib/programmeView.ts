@@ -10,13 +10,13 @@
 
 import { formatAmount } from './amount';
 import type { IndexedProgramme } from './indexer';
-import {
-  chainFor,
+import { chainFor,
   FIXTURE_CHAIN,
   FIXTURE_PROGRAMMES,
   type FixtureChainRead,
   type FixturePhase,
 } from '../fixtures/programmes';
+import type { UserRole } from '../fixtures/userRoles';
 
 export type DirectoryPhase = 'All' | FixturePhase;
 
@@ -41,6 +41,8 @@ export interface DirectoryProgramme {
   /** True for stand-in entries, so the card can tag them. */
   sample: boolean;
   chain: FixtureChainRead;
+  /** The current user's roles in this programme, if signed in. */
+  userRoles?: UserRole[];
 }
 
 /**
@@ -48,7 +50,10 @@ export interface DirectoryProgramme {
  * fixture entries are appended after deduping on id so a fixture that happens
  * to name a real programme does not render twice.
  */
-export function mergeProgrammes(index: IndexedProgramme[] | null | undefined): DirectoryProgramme[] {
+export function mergeProgrammes(
+  index: IndexedProgramme[] | null | undefined,
+  userRoles?: Record<string, UserRole[]>,
+): DirectoryProgramme[] {
   const seen = new Set<string>();
   const out: DirectoryProgramme[] = [];
 
@@ -62,6 +67,7 @@ export function mergeProgrammes(index: IndexedProgramme[] | null | undefined): D
       createdLedger: entry.createdLedger,
       sample: false,
       chain: chainFor(entry.id),
+      userRoles: userRoles?.[entry.id],
     });
   }
 
@@ -75,6 +81,7 @@ export function mergeProgrammes(index: IndexedProgramme[] | null | undefined): D
       createdLedger: entry.createdLedger,
       sample: true,
       chain: FIXTURE_CHAIN[entry.id] ?? chainFor(entry.id),
+      userRoles: userRoles?.[entry.id],
     });
   }
 
@@ -87,14 +94,18 @@ export function matchesQuery(programme: DirectoryProgramme, query: string): bool
   return programme.name.toLowerCase().includes(q) || programme.id.toLowerCase().includes(q);
 }
 
-/** Programmes matching both the search text and the phase pill. */
+/** Programmes matching both the search text, phase pill and optionally the "yours" filter. */
 export function filterProgrammes(
   all: DirectoryProgramme[],
   query: string,
   phase: DirectoryPhase,
+  yoursOnly = false,
 ): DirectoryProgramme[] {
   return all.filter(
-    (programme) => matchesQuery(programme, query) && (phase === 'All' || programme.chain.phase === phase),
+    (programme) =>
+      matchesQuery(programme, query) &&
+      (phase === 'All' || programme.chain.phase === phase) &&
+      (!yoursOnly || (programme.userRoles != null && programme.userRoles.length > 0)),
   );
 }
 
