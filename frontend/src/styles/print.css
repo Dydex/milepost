@@ -17,13 +17,6 @@
     min-height: auto !important;
   }
 
-  .glass-panel {
-    background: white !important;
-    backdrop-filter: none !important;
-    border: 1px solid #ccc !important;
-    box-shadow: none !important;
-  }
-
   a[href]::after {
     content: " (" attr(href) ")";
     font-size: 0.8em;

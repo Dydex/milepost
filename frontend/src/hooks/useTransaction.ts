@@ -98,6 +98,9 @@ export function useTransaction<T = unknown>(
         setPhase('submitting');
         setResult(sent.result);
         setPhase('success');
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new CustomEvent('milepost:transaction-success'));
+        }
         onSuccess?.(sent.result);
         return sent.result;
       } catch (caught) {

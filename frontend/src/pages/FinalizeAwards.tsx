@@ -403,7 +403,7 @@ export const FinalizeAwards = () => {
       <FinalizeBoard />
 
       <section className="stats-grid animate-fade-up" style={{ animationDelay: '100ms' }}>
-        <div className="stat-card glass-panel">
+        <div className="stat-card">
           <div className="stat-icon"><Coins size={24} /></div>
           <div className="stat-content">
             <span className="stat-label">Remaining Budget</span>
@@ -414,7 +414,7 @@ export const FinalizeAwards = () => {
             </span>
           </div>
         </div>
-        <div className="stat-card glass-panel">
+        <div className="stat-card">
           <div className="stat-icon"><AwardIcon size={24} /></div>
           <div className="stat-content">
             <span className="stat-label">Programme Phase</span>
@@ -425,7 +425,7 @@ export const FinalizeAwards = () => {
             </span>
           </div>
         </div>
-        <div className="stat-card glass-panel">
+        <div className="stat-card">
           <div className="stat-icon"><CheckCircle size={24} /></div>
           <div className="stat-content">
             <span className="stat-label">Reviewer Quorum</span>
@@ -436,7 +436,7 @@ export const FinalizeAwards = () => {
             </span>
           </div>
         </div>
-        <div className="stat-card glass-panel">
+        <div className="stat-card">
           <div className="stat-icon"><Coins size={24} /></div>
           <div className="stat-content">
             <span className="stat-label">Minimum Award</span>
@@ -453,7 +453,7 @@ export const FinalizeAwards = () => {
         </div>
       </section>
 
-      <section className="finalize-panel glass-panel animate-fade-up" style={{ animationDelay: '200ms' }}>
+      <section className="finalize-panel animate-fade-up" style={{ animationDelay: '200ms' }}>
         <Card>
           <div className="finalize-panel__heading">
             <h2>Find an application</h2>

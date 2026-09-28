@@ -1,7 +1,6 @@
 import React, { useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import './Home.css';
-import { Lock, Unlock } from 'lucide-react';
 import { CopyButton } from '../components/ui/CopyButton';
 import { HeroDemo } from '../components/landing/HeroDemo';
 import { RoleEntryCards } from '../components/landing/RoleEntryCards';
@@ -144,36 +143,6 @@ export const Home: React.FC = () => {
       {/* The problem (landing section 3): why the project exists. */}
       <ProblemSection />
 
-      {/* Paradigm Shift (Full Width Grid) */}
-      <section className="compare-section full-width scroll-animate">
-        <div className="section-header">
-          <h2>The Paradigm Shift</h2>
-          <p className="text-muted">Moving beyond transparent voting to actual accountability.</p>
-        </div>
-        
-        <div className="compare-bento">
-          <div className="bento-card old-way glass-panel">
-            <div className="bento-header">
-              <Lock size={20} className="text-error" />
-              <h3>The Old Way</h3>
-            </div>
-            <p className="text-muted">Lump sums, zero accountability after transfer, and high gas fees that price out micro-philanthropy.</p>
-          </div>
-          
-          <div className="bento-card new-way glass-panel">
-            <div className="bento-header">
-              <Unlock size={20} className="text-success" />
-              <h3>The Milepost Way</h3>
-            </div>
-            <ul className="bento-list">
-              <li><strong>Milestone Escrow:</strong> Funds unlock only when a verifier attests on-chain that a condition was met.</li>
-              <li><strong>Policy Signers:</strong> Smart wallets restrict where funds can be spent.</li>
-              <li><strong>Money Comes Back:</strong> Anything never paid out returns to funders in proportion to what they put in.</li>
-            </ul>
-          </div>
-        </div>
-      </section>
-
       {/* How it works (landing section 4): The seven-step money path */}
       <MoneyPath />
 
@@ -283,6 +252,9 @@ export const Home: React.FC = () => {
           <span className="landing-footer-brand">Milepost</span>
           <span className="landing-footer-note">Pre-audit · testnet only</span>
           <nav className="landing-footer-links" aria-label="Footer">
+            <Link to="/about">
+              About deployment
+            </Link>
             <a href={REPO_URL} target="_blank" rel="noreferrer noopener">
               Repository
             </a>
