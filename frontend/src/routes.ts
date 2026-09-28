@@ -8,9 +8,26 @@
 export interface AppRoute {
   path: string;
   label: string;
+  title: string;
 }
 
 export const APP_ROUTES: AppRoute[] = [
+  { path: '/directory', label: 'Programme directory', title: 'Programme Directory' },
+  { path: '/programme', label: 'Programme detail', title: 'Programme Detail' },
+  { path: '/funders', label: 'Funders', title: 'Funder Dashboard' },
+  { path: '/recipients', label: 'Recipients', title: 'Recipient Dashboard' },
+  { path: '/recipients/standing', label: 'Standing', title: 'Recipient Standing' },
+  { path: '/recipients/award-progress', label: 'Award progress', title: 'Award Progress' },
+  { path: '/recipients/application-timeline', label: 'Application timeline', title: 'Application Timeline' },
+  { path: '/verifiers', label: 'Verifiers', title: 'Verifier Dashboard' },
+  { path: '/finalize', label: 'Finalize awards', title: 'Finalize Awards' },
+  { path: '/policy', label: 'Spend policy', title: 'Spend Policy' },
+  { path: '/admin', label: 'Admin', title: 'Admin' },
+  { path: '/admin/standing', label: 'Admin standing lookup', title: 'Admin Standing Lookup' },
+  { path: '/attestations', label: 'Attestation lookup', title: 'Attestation Lookup' },
+  { path: '/schemas/register', label: 'Register schema', title: 'Register Schema' },
+  { path: '/keepalive', label: 'Keepalive', title: 'Keepalive' },
+  { path: '/admin/payees', label: 'Payee management', title: 'Payee Management' },
   { path: '/directory', label: 'Programme directory' },
   { path: '/programme', label: 'Programme detail' },
   { path: '/funders', label: 'Funders' },

@@ -10,6 +10,9 @@ import { useContractRead, useContractResult } from '../hooks/useContractRead';
 import { useTransaction } from '../hooks/useTransaction';
 import { looksLikeAddress, truncateAddress } from '../lib/format';
 import { explain } from '../lib/errors';
+import { Badge, Button, Field } from '../components/ui';
+import { ErrorPanel, PendingState } from '../components/state/AsyncStates';
+import { usePageTitle } from '../hooks/usePageTitle';
 import { formatAmount, validateAmount } from '../lib/amount';
 import { AmountField, Badge, Button, Field } from '../components/ui';
 import { ErrorPanel, PendingState, TransactionOutcome } from '../components/state/AsyncStates';
@@ -36,6 +39,7 @@ type ItemStatus = 'idle' | 'pending' | 'error' | 'done' | 'declined';
  * tagged as sample data.
  */
 export const VerifierDashboard = () => {
+  usePageTitle('Verifier Dashboard');
   const { address, connect } = useWallet();
   const { attest, demoProgramme } = useSoroban();
   const announce = useAnnouncer();
