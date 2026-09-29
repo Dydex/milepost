@@ -1,7 +1,11 @@
 import { render, screen } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 import { PhaseBadge, ModePill } from './Badge';
-import { FIXTURE_MODES, FIXTURE_PHASES } from '../../fixtures/phaseModeFixtures';
+
+// Every phase and every mode the two components render. 'Open' is in both on
+// purpose: a programme phase, and a payout mode with no escrow or payee limit.
+const FIXTURE_PHASES = ['Open', 'Review', 'Settled', 'Cancelled'] as const;
+const FIXTURE_MODES = ['Direct', 'Allocated', 'Restricted', 'Open'] as const;
 
 describe('PhaseBadge', () => {
   it.each(FIXTURE_PHASES)('renders %s with its own phase class', (phase) => {
