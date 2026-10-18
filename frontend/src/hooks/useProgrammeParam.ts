@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useLocation, useSearchParams } from 'react-router-dom';
 import { useSoroban } from '../context/useSoroban';
 import { isProgrammeContractId, verifyRegistryProgramme } from '../lib/registryVerification';
-import { FIXTURE_PROGRAMMES } from '../fixtures/programmes';
+import { isSampleProgrammeId } from '../lib/programmeView';
 
 export type ProgrammeParamStatus =
   | 'absent'
@@ -48,15 +48,6 @@ export function looksLikeContractId(value: string): boolean {
   return isProgrammeContractId(value);
 }
 
-/**
- * The sample programmes the directory shows beside the indexed ones. Their ids
- * are stand-ins, not contract addresses, so they are accepted by name rather
- * than sent to the registry. Remove with the fixtures.
- */
-function isSampleProgramme(value: string): boolean {
-  return FIXTURE_PROGRAMMES.some((p) => p.id === value);
-}
-
 export function useProgrammeParam(): ProgrammeParamState {
   const location = useLocation();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -65,7 +56,9 @@ export function useProgrammeParam(): ProgrammeParamState {
   const raw = searchParams.get('programme');
   const programmeId = normalizeProgrammeParam(raw);
   const hasParam = consumesParam && programmeId !== null;
-  const isSample = hasParam && programmeId !== '' && isSampleProgramme(programmeId);
+  // A sample programme's id is a stand-in, not a contract address, so it is
+  // accepted by name rather than sent to the registry. See isSampleProgrammeId.
+  const isSample = hasParam && programmeId !== '' && isSampleProgrammeId(programmeId);
   const syntaxValid = hasParam && programmeId !== '' && (isSample || looksLikeContractId(programmeId));
   const [verification, setVerification] = useState<VerificationState>({
     programmeId: null,

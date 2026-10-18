@@ -10,6 +10,7 @@
 
 import { formatAmount } from './amount';
 import type { IndexedProgramme } from './indexer';
+import { isProgrammeContractId } from './registryVerification';
 import { chainFor,
   FIXTURE_CHAIN,
   FIXTURE_PROGRAMMES,
@@ -17,6 +18,18 @@ import { chainFor,
   type FixturePhase,
 } from '../fixtures/programmes';
 import type { UserRole } from '../fixtures/userRoles';
+
+/**
+ * The one decision for whether a programme is a sample.
+ *
+ * A programme is a sample only when its id is listed in the fixture set AND is
+ * not a contract id. The second condition is the guard: a fixture can never
+ * claim a registry-deployed programme, even if someone adds a real id to
+ * `FIXTURE_PROGRAMMES` by mistake.
+ */
+export function isSampleProgrammeId(id: string): boolean {
+  return !isProgrammeContractId(id) && FIXTURE_PROGRAMMES.some((p) => p.id === id);
+}
 
 export type DirectoryPhase = 'All' | FixturePhase;
 
@@ -38,7 +51,7 @@ export interface DirectoryProgramme {
   name: string;
   creator: string | null;
   createdLedger: number | null;
-  /** True for stand-in entries, so the card can tag them. */
+  /** True for stand-in entries, so the card can tag them. See {@link isSampleProgrammeId}. */
   sample: boolean;
   chain: FixtureChainRead;
   /** The current user's roles in this programme, if signed in. */
@@ -79,7 +92,7 @@ export function mergeProgrammes(
       name: entry.name ?? 'Unnamed programme',
       creator: entry.creator,
       createdLedger: entry.createdLedger,
-      sample: true,
+      sample: isSampleProgrammeId(entry.id),
       chain: FIXTURE_CHAIN[entry.id] ?? chainFor(entry.id),
       userRoles: userRoles?.[entry.id],
     });

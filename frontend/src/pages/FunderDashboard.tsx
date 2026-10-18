@@ -5,7 +5,7 @@ import { ContributionList } from '../components/funder/ContributionList';
 import { SeededProgrammeTools } from '../components/funder/SeededProgrammeTools';
 import { SignInSheet } from '../components/layout/SignInSheet';
 import { useWallet } from '../context/useWallet';
-import { FIXTURE_BALANCE, FIXTURE_CONTRIBUTIONS } from '../fixtures/funding';
+import { FIXTURE_CONTRIBUTIONS } from '../fixtures/funding';
 import { useIndexedList, useProgrammeParam } from '../hooks';
 import { ProgrammeParamNotice } from '../components/programme/ProgrammeParamNotice';
 import { contributionCard, fundingTotals } from '../lib/funding';
@@ -26,9 +26,10 @@ const SIGNED_OUT_PREVIEW = [
  * contribute. Signed out, it explains what signing in would show instead of
  * rendering empty panels.
  *
- * Contributions and the balance are stand-ins (`fixtures/funding.ts`) until
- * the per-address reads are wired; the programme list is the public index
- * merged with the sample programmes, as on the directory.
+ * Contributions are stand-ins (`fixtures/funding.ts`) until the per-address
+ * read is wired; the programme list is the public index merged with the sample
+ * programmes, as on the directory. The contribute flow reads its balance from
+ * the chosen programme's token contract itself.
  */
 export const FunderDashboard = () => {
   usePageTitle('Funder Dashboard');
@@ -124,7 +125,6 @@ export const FunderDashboard = () => {
             <ContributeFlow
               programmes={programmes}
               linkedProgrammeId={programmeParam.status === 'valid' ? programmeParam.programmeId : null}
-              balance={BigInt(FIXTURE_BALANCE)}
             />
           </div>
 

@@ -1,5 +1,5 @@
 /**
- * Stand-in data for recipient awards, payees, applications, and standing.
+ * Stand-in data for recipient awards, payees, and applications.
  *
  * Shaped like the reads they stand in for, so swapping to live on-chain
  * reads or index data is a change of source.
@@ -31,17 +31,16 @@ export interface RecipientApplicationFixture {
   programmeName: string;
   phase: 'Open' | 'Review' | 'Settled' | 'Cancelled';
   requested: string; // stroops as decimal string
-  submittedLedger: number;
+  /** When the application was submitted, as `Application.submitted_at` returns it: Unix seconds. */
+  submittedAt: number;
   votes: string[]; // stroops as decimal strings
   quorum: number; // reviewer quorum, capped at 16
-}
-
-export interface RecipientStandingFixture {
-  programmes: number;
-  received: string; // stroops as decimal string
-  tranchesReleased: number;
-  tranchesAwarded: number;
-  liveForDays: number;
+  /** Whether the application has been finalised into an award. Mirrors the contract field. */
+  finalized?: boolean;
+  /** Whether the application has been withdrawn. Mirrors the contract field. */
+  withdrawn?: boolean;
+  /** True for a stand-in entry belonging to a sample programme, so the card can tag it. */
+  sample?: boolean;
 }
 
 /**
@@ -131,7 +130,7 @@ export const FIXTURE_APPLICATIONS: RecipientApplicationFixture[] = [
     programmeName: 'Vocational Training Stipends Q3',
     phase: 'Review',
     requested: '12000000000', // 1,200 USDC
-    submittedLedger: 4704410,
+    submittedAt: 1774000000, // 20 March 2026
     votes: ['12000000000', '9000000000'],
     quorum: 5,
   },
@@ -140,19 +139,8 @@ export const FIXTURE_APPLICATIONS: RecipientApplicationFixture[] = [
     programmeName: 'Secondary School Bursaries 2026',
     phase: 'Open',
     requested: '5000000000', // 500 USDC
-    submittedLedger: 4818330,
+    submittedAt: 1778000000, // 5 May 2026
     votes: [],
     quorum: 3,
   },
 ];
-
-/**
- * Recipient standing aggregate stand-in.
- */
-export const FIXTURE_STANDING: RecipientStandingFixture = {
-  programmes: 3,
-  received: '46300000000',
-  tranchesReleased: 5,
-  tranchesAwarded: 9,
-  liveForDays: 23,
-};

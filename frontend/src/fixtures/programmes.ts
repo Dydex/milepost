@@ -13,6 +13,11 @@
  *
  * Anything rendered from these is tagged in the UI as "Sample data" /
  * "Sample chain read" so it is never mistaken for a live figure.
+ *
+ * The ids below are deliberate stand-ins and must **never** match a Stellar
+ * contract id: a fixture must not be able to claim a real, registry-deployed
+ * programme. `isSampleProgrammeId` in `lib/programmeView.ts` enforces this at
+ * runtime and `programmeView.test.ts` enforces it over every id here.
  */
 
 /** Phase a programme can be in, mirrored from `@milepost/program`. */
