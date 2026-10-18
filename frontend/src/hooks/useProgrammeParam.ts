@@ -2,7 +2,6 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useLocation, useSearchParams } from 'react-router-dom';
 import { useSoroban } from '../context/useSoroban';
 import { isProgrammeContractId, verifyRegistryProgramme } from '../lib/registryVerification';
-import { isSampleProgrammeId } from '../lib/programmeView';
 
 export type ProgrammeParamStatus =
   | 'absent'
@@ -56,10 +55,7 @@ export function useProgrammeParam(): ProgrammeParamState {
   const raw = searchParams.get('programme');
   const programmeId = normalizeProgrammeParam(raw);
   const hasParam = consumesParam && programmeId !== null;
-  // A sample programme's id is a stand-in, not a contract address, so it is
-  // accepted by name rather than sent to the registry. See isSampleProgrammeId.
-  const isSample = hasParam && programmeId !== '' && isSampleProgrammeId(programmeId);
-  const syntaxValid = hasParam && programmeId !== '' && (isSample || looksLikeContractId(programmeId));
+  const syntaxValid = hasParam && programmeId !== '' && looksLikeContractId(programmeId);
   const [verification, setVerification] = useState<VerificationState>({
     programmeId: null,
     status: 'idle',
@@ -68,7 +64,7 @@ export function useProgrammeParam(): ProgrammeParamState {
   const [attempt, setAttempt] = useState(0);
 
   useEffect(() => {
-    if (!syntaxValid || !programmeId || isSample) return;
+    if (!syntaxValid || !programmeId) return;
 
     let cancelled = false;
 
@@ -85,7 +81,7 @@ export function useProgrammeParam(): ProgrammeParamState {
     return () => {
       cancelled = true;
     };
-  }, [attempt, isSample, programmeId, registry, syntaxValid]);
+  }, [attempt, programmeId, registry, syntaxValid]);
 
   const clear = useCallback(() => {
     const next = new URLSearchParams(searchParams);
@@ -124,21 +120,6 @@ export function useProgrammeParam(): ProgrammeParamState {
         error: null,
         message:
           'That programme link is not a valid Milepost programme address. Check the link or clear it to use the default programme.',
-        clear,
-        refetch,
-      };
-    }
-
-    if (isSample) {
-      return {
-        raw,
-        programmeId,
-        status: 'valid',
-        active: true,
-        blocksProgramme: false,
-        loading: false,
-        error: null,
-        message: null,
         clear,
         refetch,
       };
@@ -202,5 +183,5 @@ export function useProgrammeParam(): ProgrammeParamState {
       clear,
       refetch,
     };
-  }, [clear, hasParam, isSample, programmeId, raw, refetch, syntaxValid, verification]);
+  }, [clear, hasParam, programmeId, raw, refetch, syntaxValid, verification]);
 }
