@@ -137,7 +137,7 @@ pushing:
 ```bash
 cargo install --locked cargo-mutants   # once
 
-git diff main... > /tmp/pr.diff
+git diff dev... > /tmp/pr.diff
 ./scripts/mutants.sh --in-diff /tmp/pr.diff    # what CI runs on your PR
 ./scripts/mutants.sh -F 'Programme::refund'    # or just the functions you touched
 ```
@@ -161,7 +161,8 @@ covers reading the report, the full run, and how to tell the two apart.
 **Picking up an issue**
 1. Comment on the issue to let others know you are working on it.
 2. Fork the repository and clone your fork.
-3. Create a branch from `main` using the convention below.
+3. Create a branch from `dev` using the convention below, and open your pull
+   request against `dev`. `main` only moves when `dev` is released to it.
 
 **Branch naming convention:**
 `<type>/<short-description>`

@@ -172,7 +172,7 @@ cargo install --locked cargo-mutants
 ./scripts/mutants.sh -F 'Programme::execute_refund'
 
 # Exactly what CI runs on your pull request: the lines you changed.
-git diff main... > /tmp/pr.diff
+git diff dev... > /tmp/pr.diff
 ./scripts/mutants.sh --in-diff /tmp/pr.diff
 
 # Everything: about 270 mutants, around 90 minutes with four jobs on a laptop.

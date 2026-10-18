@@ -112,16 +112,16 @@ only uses released bindings; to try the app against an unreleased change, see
 
 1. Comment on the issue before starting, so it can be assigned and nobody
    duplicates the work.
-2. Fork the repository and branch from `main`, named
+2. Fork the repository and branch from `dev`, named
    `<type>/<short-description>` — for example `feat/contribute-flow` or
    `fix/address-truncation`.
 3. Write imperative commit subjects under 72 characters, with context in the
    body when it helps.
-4. In the PR, link the issue with `Closes #<number>`, and show the change
-   working: screenshots or a short clip for UI, test output for logic.
+4. Open the PR against `dev`, link the issue with `Closes #<number>`, and show
+   the change working: screenshots or a short clip for UI, test output for logic.
 
 PRs are squash-merged, so the PR title and description become the commit on
-`main`.
+`dev`, which is released to `main`.
 
 ## Security
 

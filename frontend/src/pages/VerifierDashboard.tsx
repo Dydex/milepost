@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Buffer } from 'buffer';
 import type { Application } from '@milepost/program';
@@ -15,6 +15,7 @@ import { formatAmount, validateAmount } from '../lib/amount';
 import { AmountField, Badge, Button, Field } from '../components/ui';
 import { ErrorPanel, PendingState, TransactionOutcome } from '../components/state/AsyncStates';
 import { FIXTURE_REVIEW_APPLICANTS } from '../fixtures/reviewFixtures';
+import { fetchProgrammes } from '../lib/indexer';
 import {
   FIXTURE_MY_ATTESTATIONS,
   FIXTURE_VERIFIER_QUEUE,
@@ -39,7 +40,7 @@ type ItemStatus = 'idle' | 'pending' | 'error' | 'done' | 'declined';
 export const VerifierDashboard = () => {
   usePageTitle('Verifier Dashboard');
   const { address, connect } = useWallet();
-  const { attest, demoProgramme } = useSoroban();
+  const { attest, demoProgramme, programmeAt } = useSoroban();
   const announce = useAnnouncer();
 
   const [statusById, setStatusById] = useState<Record<string, ItemStatus>>({});
@@ -81,6 +82,42 @@ export const VerifierDashboard = () => {
     () => demoProgramme.get_application({ applicant: selectedApplicant }),
     [demoProgramme, selectedApplicant],
     { contract: 'program', enabled: applicantValid },
+  );
+
+  // Issues #430/#431: walk the indexed (advisory) programme list, re-check
+  // each on-chain, and keep only the ones where this address actually holds
+  // a role — the index is never trusted on its own for this.
+  type MyProgramme = { id: string; name: string | null; isVerifier: boolean; isReviewer: boolean; phase: string | null };
+  const [myProgrammes, setMyProgrammes] = useState<MyProgramme[] | null>(null);
+  useEffect(() => {
+    if (!address) {
+      setMyProgrammes(null);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      const indexed = await fetchProgrammes().catch(() => []);
+      const checked = await Promise.all(
+        indexed.map(async (p) => {
+          const programme = programmeAt(p.id);
+          const [ver, rev, phase] = await Promise.all([
+            programme.is_verifier({ addr: address }).then((r) => r.result).catch(() => false),
+            programme.is_reviewer({ addr: address }).then((r) => r.result).catch(() => false),
+            programme.get_phase().then((r) => r.result).catch(() => null),
+          ]);
+          return { id: p.id, name: p.name, isVerifier: ver, isReviewer: rev, phase: phase != null ? String(phase) : null };
+        }),
+      );
+      if (!cancelled) setMyProgrammes(checked.filter((p) => p.isVerifier || p.isReviewer));
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [address, programmeAt]);
+  const verifierProgrammes = myProgrammes?.filter((p) => p.isVerifier) ?? [];
+  const reviewerProgrammes = useMemo(
+    () => (myProgrammes ?? []).filter((p) => p.isReviewer).sort((a, b) => (a.phase === 'Review' ? -1 : b.phase === 'Review' ? 1 : 0)),
+    [myProgrammes],
   );
 
   const programmes = useMemo(() => {
@@ -308,6 +345,49 @@ export const VerifierDashboard = () => {
               </div>
             ))}
           </div>
+
+          <section aria-labelledby="my-programmes">
+            <h2 id="my-programmes" className="verifier-page__section-title">
+              Your programmes
+            </h2>
+            {myProgrammes === null ? (
+              <p className="typo-text text-muted">Checking your roles across known programmes…</p>
+            ) : (
+              <div className="verifier-page__grid">
+                <div>
+                  <h3>Programmes you verify for</h3>
+                  {verifierProgrammes.length === 0 ? (
+                    <p className="typo-text text-muted">None found among known programmes.</p>
+                  ) : (
+                    <ul>
+                      {verifierProgrammes.map((p) => (
+                        <li key={p.id}>{p.name ?? truncateAddress(p.id)} — {p.phase ?? 'unknown phase'}</li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+                <div>
+                  <h3>Programmes where you can vote</h3>
+                  {reviewerProgrammes.length === 0 ? (
+                    <p className="typo-text text-muted">None found among known programmes.</p>
+                  ) : (
+                    <ul>
+                      {reviewerProgrammes.map((p) => (
+                        <li key={p.id}>
+                          {p.name ?? truncateAddress(p.id)} — {p.phase ?? 'unknown phase'}
+                          {p.phase === 'Review' && (
+                            <button type="button" onClick={() => setSelectedApplicant('')}>
+                              Review here
+                            </button>
+                          )}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              </div>
+            )}
+          </section>
 
           <div className="verifier-page__grid">
             <section aria-labelledby="reviewer-vote">
